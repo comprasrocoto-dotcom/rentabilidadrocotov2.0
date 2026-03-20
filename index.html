@@ -68,11 +68,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .fc-bar-bg{height:5px;background:#243b55;border-radius:3px;overflow:hidden}
 .fc-bar-fill{height:100%;border-radius:3px}
 /* UPLOAD */
-.upload-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:65vh;gap:18px;padding:24px;text-align:center}
-.drop-zone{width:100%;max-width:440px;padding:36px 22px;border:2px dashed rgba(0,180,216,.3);border-radius:16px;cursor:pointer;transition:.2s;display:block}
+
+
 .drop-zone:hover,.drop-zone.drag{border-color:#00b4d8;background:rgba(212,160,23,.04)}
-.btn-upload{display:inline-block;background:linear-gradient(135deg,#0096c7,#023e8a);color:#fff;font-weight:700;padding:9px 24px;border-radius:8px;font-size:.82rem}
-.info-box{background:#1b2838;border:1px solid rgba(0,180,216,.15);border-radius:11px;padding:16px 18px;max-width:440px;width:100%;text-align:left}
+
+
 /* LOADING */
 .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px}
 .spinner{width:42px;height:42px;border:3px solid rgba(0,180,216,.2);border-top:3px solid #00b4d8;border-radius:50%;animation:spin 1s linear infinite}
@@ -88,10 +88,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <header>
   <div class="logo" style="color:#e9ecef">🌶️ Rocoto<span style="color:#00b4d8;font-weight:900">.</span></div>
   <div class="header-right">
-    <span id="file-name" style="font-size:.68rem;color:#344e6e;font-style:italic"></span>
-    <label id="change-btn" style="display:none;background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.2);border-radius:7px;padding:4px 11px;font-size:.7rem;font-weight:600;color:#00b4d8;cursor:pointer">
-      <input type="file" accept=".xlsx,.xls" id="change-input" style="display:none"/>🔄 Actualizar Excel
-    </label>
+
     <div class="badge badge-green" id="status-badge" style="display:none"><div class="dot" style="background:#06d6a0"></div><span>En Línea</span></div>
     <div class="badge badge-yellow" id="loading-badge"><div class="dot" style="background:#00b4d8"></div><span>Cargando…</span></div>
     <span style="font-size:.68rem;color:#6c8ebf" id="update-time"></span>
@@ -124,24 +121,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 <main>
   <div id="loading" class="loading"><div class="spinner"></div><div style="color:#6c8ebf;font-size:1rem">Buscando Excel…</div></div>
-
-  <div id="upload" style="display:none">
-    <div class="upload-wrap">
-      <div style="font-size:1.7rem;font-weight:700">🌶️ Rocoto Dashboard</div>
-      <p style="color:#6c8ebf;font-size:.88rem;max-width:360px">Sube el archivo Excel para generar el análisis completo</p>
-      <label class="drop-zone" id="drop-zone">
-        <input type="file" accept=".xlsx,.xls" id="file-input" style="display:none"/>
-        <div style="font-size:2.8rem;margin-bottom:10px">📂</div>
-        <div style="font-size:1rem;font-weight:600;color:#e9ecef;margin-bottom:5px">Arrastra el Excel aquí</div>
-        <div style="font-size:.78rem;color:#6c8ebf;margin-bottom:16px">o haz clic para seleccionar</div>
-        <div class="btn-upload">📊 Seleccionar Base_de_Informes_Rocoto.xlsx</div>
-      </label>
-      <div class="info-box">
-        <div style="font-size:.76rem;font-weight:700;color:#00b4d8;margin-bottom:8px">📋 Hojas requeridas:</div>
-        <div style="font-size:.76rem;color:#adb5bd;line-height:1.9">● VENTAS &nbsp;&nbsp; ● COMPRAS &nbsp;&nbsp; ● MERCANCIA VENDIDA &nbsp;&nbsp; ● RENTABILIDAD</div>
-      </div>
-    </div>
-  </div>
 
   <div id="dashboard" style="display:none">
 
@@ -1106,19 +1085,14 @@ function loadBuffer(buf,name){
     const wb=XLSX.read(new Uint8Array(buf),{type:"array",cellDates:true});
     parseExcel(wb);
     document.getElementById("loading").style.display="none";
-    document.getElementById("upload").style.display="none";
     document.getElementById("dashboard").style.display="block";
     document.getElementById("main-nav").style.display="flex";
     document.getElementById("filter-bar").style.display="flex";
     document.getElementById("loading-badge").style.display="none";
     document.getElementById("status-badge").style.display="flex";
-    document.getElementById("file-name").textContent="📂 "+name;
-    document.getElementById("change-btn").style.display="block";
     document.getElementById("update-time").textContent=new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"});
   }catch(e){
-    alert("Error leyendo el Excel: "+e.message);
-    document.getElementById("loading").style.display="none";
-    document.getElementById("upload").style.display="block";
+    document.getElementById("loading").innerHTML=`<div style="text-align:center;padding:40px"><div style="font-size:2rem">❌</div><div style="color:#e74c3c;margin-top:8px">Error cargando: ${e.message}</div></div>`;
   }
 }
 
@@ -1129,16 +1103,11 @@ function handleFile(file){
   r.readAsArrayBuffer(file);
 }
 
-document.getElementById("file-input").addEventListener("change",e=>handleFile(e.target.files[0]));
-document.getElementById("change-input").addEventListener("change",e=>handleFile(e.target.files[0]));
-const dz=document.getElementById("drop-zone");
-dz.addEventListener("dragover",e=>{e.preventDefault();dz.classList.add("drag")});
-dz.addEventListener("dragleave",()=>dz.classList.remove("drag"));
-dz.addEventListener("drop",e=>{e.preventDefault();dz.classList.remove("drag");handleFile(e.dataTransfer.files[0])});
+// File upload removed — Excel loaded directly from repo
 
-// Auto-load
+// Auto-load from repo — no manual upload needed
 (async()=>{
-  for(const p of["./Base_de_Informes_Rocoto.xlsx","/Base_de_Informes_Rocoto.xlsx","Base_de_Informes_Rocoto.xlsx"]){
+  for(const p of["./Base_de_Informes_Rocoto.xlsx","Base_de_Informes_Rocoto.xlsx","/Base_de_Informes_Rocoto.xlsx"]){
     try{
       const res=await fetch(p,{cache:"no-cache"});
       if(!res.ok)continue;
@@ -1148,9 +1117,13 @@ dz.addEventListener("drop",e=>{e.preventDefault();dz.classList.remove("drag");ha
       return;
     }catch(e){}
   }
-  document.getElementById("loading").style.display="none";
-  document.getElementById("loading-badge").style.display="none";
-  document.getElementById("upload").style.display="block";
+  // File not found — show error in loading div
+  document.getElementById("loading").innerHTML=`
+    <div style="text-align:center;padding:40px">
+      <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
+      <div style="color:#e74c3c;font-size:1rem;font-weight:600;margin-bottom:8px">No se encontró el archivo Excel</div>
+      <div style="color:#6c8ebf;font-size:.82rem">Asegúrate de que <code style="background:rgba(0,180,216,.1);padding:2px 6px;border-radius:4px;color:#48cae4">Base_de_Informes_Rocoto.xlsx</code> esté en la raíz del repositorio</div>
+    </div>`;
 })();
 </script>
 </body>
