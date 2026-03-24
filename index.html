@@ -143,6 +143,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 
 
+      <!-- TICKET PROMEDIO POR SEDE -->
+      <div class="g1 card" style="margin-bottom:16px">
+        <div class="card-title">🧑‍🍽️ Ticket Promedio por Comensal — por Sede</div>
+        <div class="card-sub">Ventas MV ÷ Unidades vendidas de Cocina (proxy comensales) · Excluye bar, adiciones y cortesías</div>
+        <div id="ticket-sede-bars" style="margin-top:10px"></div>
+      </div>
+
       <div class="g2">
         <div class="card"><div class="card-title">Ventas por Sede</div><div class="card-sub">Participación sobre ventas totales</div><div style="height:260px"><canvas id="ch-sede-ventas"></canvas></div></div>
         <div class="card"><div class="card-title">Ventas por Categoría</div><div class="card-sub">Todas las familias</div><div style="height:260px"><canvas id="ch-fam-ventas"></canvas></div></div>
@@ -482,12 +489,62 @@ function renderAll(){
   const top15u=groupBy(V,"art","uds",15);
   const bot15v=groupBy(V,"art","base",15,true);
   const bot15u=groupBy(V,"art","uds",15,true).filter(r=>r.v>0);
+  // ── TICKET PROMEDIO POR COMENSAL ──────────────────────────
+  // Se usa unidades vendidas de Cocina como proxy de comensales
+  // (cada plato de cocina ≈ 1 comensal). Excluye familias de bar,
+  // adiciones, mezcladores y cortesías para no inflar el conteo.
+  const FAM_EXCLUIR_TICKET = [
+    "ADICIONES","MEZCLADORES","CORTESIAS","CORTESÍAS",
+    "BONO REGALO","DESCUENTOS","DESCUETOS","MODIFICADORES",
+    ...["RON","WHISKY","TEQUILA","VODKA","MEZCAL","GINEBRA",
+        "AGUARDIENTE","PISCO","VINO TINTO","VINO BLANCO","VINO ROSADO",
+        "VINOS","VINOS POR COPA","CERVEZA","COCTELES TRADICIONALES",
+        "COCTELES CON PISCO","COCTELES DE AUTOR","COCTELES MALANGA",
+        "GIN TONICS","SANGRIAS","SPRILZ","APERITIVOS DIGESTIVOS",
+        "MEZCLADORES","INSUMOS BAR","BEBIDAS","BEBIDAS SIN ALCOHOL",
+        "SODAS","JUGOS Y LIMONADAS","AROMATICAS","CAFES"]
+  ];
+  const vCocinaTicket = V.filter(r =>
+    r.cc === "Cocina" &&
+    !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
+  );
+  const udsComensales = vCocinaTicket.reduce((a, b) => a + b.uds, 0);
+  // Ticket sobre ventas totales (base) entre comensales estimados
+  const ticketPromedio = udsComensales > 0 ? Math.round(tven / udsComensales) : 0;
+  const ticketBase     = udsComensales > 0 ? Math.round(tv   / udsComensales) : 0;
+  // ─────────────────────────────────────────────────────────
+
   kpiGrid("kpi-ventas",[
     {icon:"💵",label:"Ventas Totales (MV)",value:fmt(tven),sub:"Hoja Mercancía Vendida",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
     {icon:"📦",label:"Total Unidades",value:new Intl.NumberFormat("es-CO").format(V.reduce((a,b)=>a+b.uds,0)),sub:"Productos despachados",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"🧑‍🍽️",label:"Ticket Promedio",value:fmtCOP(ticketPromedio),sub:`${new Intl.NumberFormat("es-CO").format(udsComensales)} comensales est.`,bar:"linear-gradient(90deg,#f39c12,#d35400)",tooltip:"Ventas MV ÷ Uds Cocina"},
     {icon:"🏪",label:"Sedes",value:[...new Set(V.map(r=>r.sede))].length,sub:"Activas en el período",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
     {icon:"🍽️",label:"Categorías",value:[...new Set(V.map(r=>r.fam))].filter(Boolean).length,sub:"Familias de producto",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
   ]);
+
+  // ── TICKET POR SEDE ───────────────────────────────────────
+  const sedesTicket = [...new Set(V.map(r => r.sede))].filter(Boolean);
+  const ticketPorSede = sedesTicket.map(s => {
+    const vSede = V.filter(r => r.sede === s);
+    const ventasMVSede = FILTERED.mv.filter(r => r.sede === s).reduce((a, b) => a + b.ventas, 0);
+    const ventasBase   = vSede.reduce((a, b) => a + b.base, 0);
+    const ventasSede   = ventasMVSede > 0 ? ventasMVSede : ventasBase;
+    const udsCocinaSede = vSede.filter(r =>
+      r.cc === "Cocina" &&
+      !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
+    ).reduce((a, b) => a + b.uds, 0);
+    return { sede: s, ticket: udsCocinaSede > 0 ? Math.round(ventasSede / udsCocinaSede) : 0, comensales: udsCocinaSede, ventas: ventasSede };
+  }).filter(r => r.ticket > 0).sort((a, b) => b.ticket - a.ticket);
+  const maxTicket = ticketPorSede[0]?.ticket || 1;
+  const elTS = document.getElementById("ticket-sede-bars");
+  if (elTS) {
+    const colors = ["#f39c12","#e67e22","#d35400","#e74c3c","#c0392b","#00b4d8","#0096c7"];
+    elTS.innerHTML = ticketPorSede.map((r, i) => {
+      const clr = colors[i % colors.length];
+      const pctBar = ((r.ticket / maxTicket) * 100).toFixed(0);
+      return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:.78rem;color:#adb5bd;font-weight:600;min-width:130px">${r.sede}</span><span style="font-size:.82rem;font-weight:700;color:#e9ecef">${fmtCOP(r.ticket)}</span><span style="font-size:.68rem;color:#6c8ebf;margin-left:10px">${new Intl.NumberFormat("es-CO").format(r.comensales)} comensales · ${fmt(r.ventas)}</span></div><div style="height:8px;background:#243b55;border-radius:4px;overflow:hidden"><div style="height:100%;border-radius:4px;background:${clr};width:${pctBar}%;transition:width .4s"></div></div></div>`;
+    }).join("") + `<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,180,216,.15);display:flex;gap:24px;flex-wrap:wrap"><div><span style="font-size:.66rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em">Ticket Global</span><div style="font-size:1.1rem;font-weight:700;color:#f39c12">${fmtCOP(ticketPromedio)}</div></div><div><span style="font-size:.66rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em">Total Comensales Est.</span><div style="font-size:1.1rem;font-weight:700;color:#e9ecef">${new Intl.NumberFormat("es-CO").format(udsComensales)}</div></div><div style="flex:1;align-self:flex-end;text-align:right"><span style="font-size:.64rem;color:#344e6e;font-style:italic">* Estimado: 1 plato cocina = 1 comensal</span></div></div>`;
+  }
   // Cocina / Bar split
   const vCocina=V.filter(r=>r.cc==="Cocina");
   const vBar=V.filter(r=>r.cc==="Bar");
