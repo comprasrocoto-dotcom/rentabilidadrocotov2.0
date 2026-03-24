@@ -976,15 +976,13 @@ function invTop10Table(id,invRows){
   const rows=Object.values(map).filter(r=>r.costo>0).sort((a,b)=>b.costo-a.costo).slice(0,10);
   const max=rows[0]?.costo||1;
   el.innerHTML=`<thead><tr>
-    <th>#</th><th>Artículo</th><th>Familia</th><th>Sede</th>
+    <th>#</th><th>Artículo</th>
     <th style="text-align:right">Costo Ajuste</th>
     <th style="width:100px">Barra</th>
   </tr></thead><tbody>`+
   rows.map((r,i)=>`<tr>
     <td class="rank ${i<3?"gold":""}">${i+1}</td>
-    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.art}">${r.art}</td>
-    <td style="color:#6c8ebf;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.fam}</td>
-    <td style="color:#6c8ebf;white-space:nowrap">${r.sede}</td>
+    <td style="max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.art}">${r.art}</td>
     <td class="val" style="color:#3a86ff">${fmtV(r.costo)}</td>
     <td><div style="height:5px;background:#243b55;border-radius:3px;width:100px;overflow:hidden"><div style="height:100%;border-radius:3px;background:linear-gradient(90deg,#3a86ff,#7209b7);width:${(r.costo/max*100).toFixed(0)}%"></div></div></td>
   </tr>`).join("")+`</tbody>`;
