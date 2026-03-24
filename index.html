@@ -146,7 +146,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <!-- TICKET PROMEDIO POR SEDE -->
       <div class="g1 card" style="margin-bottom:16px">
         <div class="card-title">🧑‍🍽️ Ticket Promedio por Comensal — por Sede</div>
-        <div class="card-sub">Ventas MV ÷ Unidades vendidas de Cocina (proxy comensales) · Excluye bar, adiciones y cortesías</div>
+        <div class="card-sub">Ventas Totales (Cocina + Bar) ÷ MAX(Uds Cocina, Uds Bar) · Excluye adiciones, mezcladores y cortesías</div>
         <div id="ticket-sede-bars" style="margin-top:10px"></div>
       </div>
 
@@ -489,51 +489,70 @@ function renderAll(){
   const top15u=groupBy(V,"art","uds",15);
   const bot15v=groupBy(V,"art","base",15,true);
   const bot15u=groupBy(V,"art","uds",15,true).filter(r=>r.v>0);
-  // ── TICKET PROMEDIO POR COMENSAL ──────────────────────────
-  // Se usa unidades vendidas de Cocina como proxy de comensales
-  // (cada plato de cocina ≈ 1 comensal). Excluye familias de bar,
-  // adiciones, mezcladores y cortesías para no inflar el conteo.
+  // ── TICKET PROMEDIO POR COMENSAL (Cocina + Bar unificado) ─
+  // Familias excluidas del conteo (no representan comensal real)
   const FAM_EXCLUIR_TICKET = [
     "ADICIONES","MEZCLADORES","CORTESIAS","CORTESÍAS",
-    "BONO REGALO","DESCUENTOS","DESCUETOS","MODIFICADORES",
-    ...["RON","WHISKY","TEQUILA","VODKA","MEZCAL","GINEBRA",
-        "AGUARDIENTE","PISCO","VINO TINTO","VINO BLANCO","VINO ROSADO",
-        "VINOS","VINOS POR COPA","CERVEZA","COCTELES TRADICIONALES",
-        "COCTELES CON PISCO","COCTELES DE AUTOR","COCTELES MALANGA",
-        "GIN TONICS","SANGRIAS","SPRILZ","APERITIVOS DIGESTIVOS",
-        "MEZCLADORES","INSUMOS BAR","BEBIDAS","BEBIDAS SIN ALCOHOL",
-        "SODAS","JUGOS Y LIMONADAS","AROMATICAS","CAFES"]
+    "BONO REGALO","DESCUENTOS","DESCUETOS","MODIFICADORES"
   ];
-  const vCocinaTicket = V.filter(r =>
+  // Unidades Cocina limpias
+  const udsCocina = V.filter(r =>
     r.cc === "Cocina" &&
     !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
-  );
-  const udsComensales = vCocinaTicket.reduce((a, b) => a + b.uds, 0);
-  // Ticket sobre ventas totales (base) entre comensales estimados
-  const ticketPromedio = udsComensales > 0 ? Math.round(tven / udsComensales) : 0;
-  const ticketBase     = udsComensales > 0 ? Math.round(tv   / udsComensales) : 0;
+  ).reduce((a, b) => a + b.uds, 0);
+  // Unidades Bar limpias (sin mezcladores/cortesías)
+  const udsBar = V.filter(r =>
+    r.cc === "Bar" &&
+    !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
+  ).reduce((a, b) => a + b.uds, 0);
+  // Comensales = MAX(cocina, bar) para no duplicar el mismo comensal
+  const udsComensales = Math.max(udsCocina, udsBar);
+  // Ventas totales: Cocina + Bar desde MV
+  const ventasCocinaT = FILTERED.mv.filter(r => r.cc?.toLowerCase().includes("cocin")).reduce((a,b)=>a+b.ventas,0);
+  const ventasBarT    = FILTERED.mv.filter(r => r.cc?.toLowerCase().includes("bar")).reduce((a,b)=>a+b.ventas,0);
+  const ventasTotalesTicket = tven;
+  const ticketPromedio = udsComensales > 0 ? Math.round(ventasTotalesTicket / udsComensales) : 0;
   // ─────────────────────────────────────────────────────────
 
   kpiGrid("kpi-ventas",[
     {icon:"💵",label:"Ventas Totales (MV)",value:fmt(tven),sub:"Hoja Mercancía Vendida",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
     {icon:"📦",label:"Total Unidades",value:new Intl.NumberFormat("es-CO").format(V.reduce((a,b)=>a+b.uds,0)),sub:"Productos despachados",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
-    {icon:"🧑‍🍽️",label:"Ticket Promedio",value:fmtCOP(ticketPromedio),sub:`${new Intl.NumberFormat("es-CO").format(udsComensales)} comensales est.`,bar:"linear-gradient(90deg,#f39c12,#d35400)",tooltip:"Ventas MV ÷ Uds Cocina"},
+    {icon:"🧑‍🍽️",label:"Ticket Promedio",value:fmtCOP(ticketPromedio),sub:`Cocina + Bar · ${new Intl.NumberFormat("es-CO").format(udsComensales)} comensales · 🍳${new Intl.NumberFormat("es-CO").format(udsCocina)} 🍸${new Intl.NumberFormat("es-CO").format(udsBar)}`,bar:"linear-gradient(90deg,#f39c12,#d35400)"},
     {icon:"🏪",label:"Sedes",value:[...new Set(V.map(r=>r.sede))].length,sub:"Activas en el período",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
     {icon:"🍽️",label:"Categorías",value:[...new Set(V.map(r=>r.fam))].filter(Boolean).length,sub:"Familias de producto",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
   ]);
 
-  // ── TICKET POR SEDE ───────────────────────────────────────
+  // ── TICKET POR SEDE (Cocina + Bar unificado) ─────────────
   const sedesTicket = [...new Set(V.map(r => r.sede))].filter(Boolean);
   const ticketPorSede = sedesTicket.map(s => {
     const vSede = V.filter(r => r.sede === s);
+    // Ventas totales de la sede (Cocina + Bar) desde hoja MV
     const ventasMVSede = FILTERED.mv.filter(r => r.sede === s).reduce((a, b) => a + b.ventas, 0);
     const ventasBase   = vSede.reduce((a, b) => a + b.base, 0);
     const ventasSede   = ventasMVSede > 0 ? ventasMVSede : ventasBase;
+    // Desglose Cocina / Bar para mostrar en la barra
+    const ventasCocSede = FILTERED.mv.filter(r => r.sede === s && r.cc?.toLowerCase().includes("cocin")).reduce((a,b)=>a+b.ventas,0);
+    const ventasBarSede = FILTERED.mv.filter(r => r.sede === s && r.cc?.toLowerCase().includes("bar")).reduce((a,b)=>a+b.ventas,0);
+    // Comensales por sede: MAX(cocina, bar) limpios
     const udsCocinaSede = vSede.filter(r =>
       r.cc === "Cocina" &&
       !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
     ).reduce((a, b) => a + b.uds, 0);
-    return { sede: s, ticket: udsCocinaSede > 0 ? Math.round(ventasSede / udsCocinaSede) : 0, comensales: udsCocinaSede, ventas: ventasSede };
+    const udsBarSede = vSede.filter(r =>
+      r.cc === "Bar" &&
+      !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
+    ).reduce((a, b) => a + b.uds, 0);
+    const udsComensalesSede = Math.max(udsCocinaSede, udsBarSede);
+    return {
+      sede: s,
+      ticket: udsComensalesSede > 0 ? Math.round(ventasSede / udsComensalesSede) : 0,
+      comensales: udsComensalesSede,
+      udsCoc: udsCocinaSede,
+      udsBar: udsBarSede,
+      ventas: ventasSede,
+      ventasCoc: ventasCocSede,
+      ventasBar: ventasBarSede,
+    };
   }).filter(r => r.ticket > 0).sort((a, b) => b.ticket - a.ticket);
   const maxTicket = ticketPorSede[0]?.ticket || 1;
   const elTS = document.getElementById("ticket-sede-bars");
@@ -542,8 +561,40 @@ function renderAll(){
     elTS.innerHTML = ticketPorSede.map((r, i) => {
       const clr = colors[i % colors.length];
       const pctBar = ((r.ticket / maxTicket) * 100).toFixed(0);
-      return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:.78rem;color:#adb5bd;font-weight:600;min-width:130px">${r.sede}</span><span style="font-size:.82rem;font-weight:700;color:#e9ecef">${fmtCOP(r.ticket)}</span><span style="font-size:.68rem;color:#6c8ebf;margin-left:10px">${new Intl.NumberFormat("es-CO").format(r.comensales)} comensales · ${fmt(r.ventas)}</span></div><div style="height:8px;background:#243b55;border-radius:4px;overflow:hidden"><div style="height:100%;border-radius:4px;background:${clr};width:${pctBar}%;transition:width .4s"></div></div></div>`;
-    }).join("") + `<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,180,216,.15);display:flex;gap:24px;flex-wrap:wrap"><div><span style="font-size:.66rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em">Ticket Global</span><div style="font-size:1.1rem;font-weight:700;color:#f39c12">${fmtCOP(ticketPromedio)}</div></div><div><span style="font-size:.66rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em">Total Comensales Est.</span><div style="font-size:1.1rem;font-weight:700;color:#e9ecef">${new Intl.NumberFormat("es-CO").format(udsComensales)}</div></div><div style="flex:1;align-self:flex-end;text-align:right"><span style="font-size:.64rem;color:#344e6e;font-style:italic">* Estimado: 1 plato cocina = 1 comensal</span></div></div>`;
+      const pctCoc = r.ventas > 0 ? ((r.ventasCoc / r.ventas) * 100).toFixed(0) : 0;
+      const pctBar2 = r.ventas > 0 ? ((r.ventasBar / r.ventas) * 100).toFixed(0) : 0;
+      return `<div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:.78rem;color:#adb5bd;font-weight:600;min-width:130px">${r.sede}</span>
+          <span style="font-size:.9rem;font-weight:700;color:#e9ecef">${fmtCOP(r.ticket)}</span>
+          <span style="font-size:.67rem;color:#6c8ebf;margin-left:10px">${new Intl.NumberFormat("es-CO").format(r.comensales)} com. · 🍳${pctCoc}% 🍸${pctBar2}%</span>
+        </div>
+        <div style="height:8px;background:#243b55;border-radius:4px;overflow:hidden">
+          <div style="height:100%;border-radius:4px;background:${clr};width:${pctBar}%;transition:width .5s"></div>
+        </div>
+      </div>`;
+    }).join("") +
+    `<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,180,216,.15);display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Ticket Global</div>
+        <div style="font-size:1.2rem;font-weight:700;color:#f39c12">${fmtCOP(ticketPromedio)}</div>
+      </div>
+      <div>
+        <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">🍳 Ventas Cocina</div>
+        <div style="font-size:1rem;font-weight:700;color:#e9ecef">${fmt(ventasCocinaT)}</div>
+      </div>
+      <div>
+        <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">🍸 Ventas Bar</div>
+        <div style="font-size:1rem;font-weight:700;color:#48cae4">${fmt(ventasBarT)}</div>
+      </div>
+      <div>
+        <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Comensales Est.</div>
+        <div style="font-size:1rem;font-weight:700;color:#e9ecef">${new Intl.NumberFormat("es-CO").format(udsComensales)}</div>
+      </div>
+      <div style="flex:1;text-align:right">
+        <span style="font-size:.63rem;color:#344e6e;font-style:italic">* Comensales = MAX(Uds Cocina, Uds Bar) · Ticket = (Cocina + Bar) ÷ Comensales</span>
+      </div>
+    </div>`;
   }
   // Cocina / Bar split
   const vCocina=V.filter(r=>r.cc==="Cocina");
