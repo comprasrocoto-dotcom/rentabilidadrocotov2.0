@@ -143,13 +143,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 
 
-      <!-- TICKET PROMEDIO GENERAL -->
-      <div class="g1 card" style="margin-bottom:16px">
-        <div class="card-title">🧑‍🍽️ Ticket Promedio — Comió y Tomó (Cocina + Bar)</div>
-        <div class="card-sub">Ventas Totales (Cocina + Bar) ÷ Comensales que pidieron en ambos centros · MIN(Uds Cocina, Uds Bar)</div>
-        <div id="ticket-general-box" style="margin-top:14px"></div>
-      </div>
-
       <div class="g2">
         <div class="card"><div class="card-title">Ventas por Sede</div><div class="card-sub">Participación sobre ventas totales</div><div style="height:260px"><canvas id="ch-sede-ventas"></canvas></div></div>
         <div class="card"><div class="card-title">Ventas por Categoría</div><div class="card-sub">Todas las familias</div><div style="height:260px"><canvas id="ch-fam-ventas"></canvas></div></div>
@@ -253,7 +246,25 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <table id="tbl-worst-bar"></table>
         </div>
       </div>
-
+      <!-- TABLA COMPLETA -->
+      <div class="g1 card" style="margin-top:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div class="card-title">📋 Todas las Referencias</div>
+            <div class="card-sub">Precio · Base · Costo · Costo% — ordenadas por costo%</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="rent-search" placeholder="🔍 Buscar artículo..." style="background:#1b2838;border:1px solid rgba(0,180,216,.2);color:#e9ecef;font-family:inherit;font-size:.78rem;padding:5px 10px;border-radius:7px;outline:none;width:200px" oninput="filterRentTable()"/>
+            <select id="rent-cc-filter" style="background:#1b2838;border:1px solid rgba(0,180,216,.2);color:#e9ecef;font-family:inherit;font-size:.78rem;padding:5px 10px;border-radius:7px;outline:none" onchange="filterRentTable()">
+              <option value="ALL">Todos los CC</option>
+              <option value="Cocina">🍳 Cocina</option>
+              <option value="Bar">🍸 Bar</option>
+            </select>
+            <span id="rent-count" style="font-size:.72rem;color:#6c8ebf"></span>
+          </div>
+        </div>
+        <div id="tbl-all-rent-wrap" style="max-height:520px;overflow-y:auto;overflow-x:auto"></div>
+      </div>
     </div>
 
     <!-- PARTICIPACION -->
@@ -366,7 +377,7 @@ const mkChart=(id,cfg)=>{if(charts[id])charts[id].destroy();const c=document.get
 
 /* ── RAW DATA STORE ─────────────────────────────────────── */
 let RAW={ventas:[],compras:[],mv:[],rent:[],inv:[]};
-let FILTERED={ventas:[],compras:[],mv:[],inv:[]};
+let FILTERED={ventas:[],compras:[],mv:[],inv:[],rent:[]};
 
 /* ── EXCEL PARSER ───────────────────────────────────────── */
 function parseExcel(wb){
@@ -421,11 +432,12 @@ function parseExcel(wb){
   })).filter(r=>r.sede&&r.estado);
   RAW.rent=toRows("RENTABILIDAD").map(r=>({
     fam:col(r,["Familia"]),art:col(r,["Art"]),
+    tarifa:col(r,["Tarifa"]),
     precio:colN(r,["Precio"]),
     base:colN(r,["Base"]),
     costo:colN(r,["Coste","Costo"]),
     margen:colN(r,["Margen"]),
-  })).filter(r=>r.margen>0&&r.margen<1&&r.precio>3000);
+  })).filter(r=>r.margen>0&&r.margen<1&&r.precio>0);
 
   // Populate filters
   const meses=[...new Set(RAW.ventas.map(r=>r.mes))].filter(Boolean);
@@ -445,6 +457,13 @@ function applyFilter(){
   FILTERED.compras=RAW.compras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede||r.esPlanta));
   FILTERED.mv=RAW.mv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede));
   FILTERED.inv=(RAW.inv&&RAW.inv.length)?RAW.inv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)):[];
+  // Rent filter by sede: keep only articles sold in that sede (from ventas)
+  if(sede==="ALL"){
+    FILTERED.rent=RAW.rent.filter(r=>r.tarifa==="TARIFA ROCOTO"||r.tarifa==="TARIFA MALANGA"||r.tarifa==="TARIFA HOTWINGS"||(!r.tarifa.toLowerCase().includes("rappi")&&!r.tarifa.toLowerCase().includes("personal")));
+  } else {
+    const artsInSede=new Set(RAW.ventas.filter(r=>r.sede===sede&&r.neto>0).map(r=>r.art.trim().toUpperCase()));
+    FILTERED.rent=RAW.rent.filter(r=>artsInSede.has(r.art.trim().toUpperCase())&&(!r.tarifa.toLowerCase().includes("rappi")&&!r.tarifa.toLowerCase().includes("personal")));
+  }
   const info=[];
   if(mes!=="ALL") info.push(mes.toUpperCase());
   if(sede!=="ALL") info.push(sede);
@@ -460,7 +479,7 @@ function resetFilter(){
 
 /* ── RENDER ALL ─────────────────────────────────────────── */
 function renderAll(){
-  const V=FILTERED.ventas, C=FILTERED.compras, MV=FILTERED.mv, R=RAW.rent;
+  const V=FILTERED.ventas, C=FILTERED.compras, MV=FILTERED.mv, R=FILTERED.rent&&FILTERED.rent.length?FILTERED.rent:RAW.rent.filter(r=>!r.tarifa.toLowerCase().includes("rappi")&&!r.tarifa.toLowerCase().includes("personal"));
   const tv=V.reduce((a,b)=>a+b.base,0);
   const tc=C.reduce((a,b)=>a+b.total,0);
   const tmv=MV.reduce((a,b)=>a+b.mv,0);
@@ -489,86 +508,12 @@ function renderAll(){
   const top15u=groupBy(V,"art","uds",15);
   const bot15v=groupBy(V,"art","base",15,true);
   const bot15u=groupBy(V,"art","uds",15,true).filter(r=>r.v>0);
-  // ── TICKET PROMEDIO POR COMENSAL (Cocina + Bar unificado) ─
-  // Familias excluidas del conteo (no representan comensal real)
-  const FAM_EXCLUIR_TICKET = [
-    "ADICIONES","MEZCLADORES","CORTESIAS","CORTESÍAS",
-    "BONO REGALO","DESCUENTOS","DESCUETOS","MODIFICADORES"
-  ];
-  // Unidades Cocina limpias
-  const udsCocina = V.filter(r =>
-    r.cc === "Cocina" &&
-    !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
-  ).reduce((a, b) => a + b.uds, 0);
-  // Unidades Bar limpias (sin mezcladores/cortesías)
-  const udsBar = V.filter(r =>
-    r.cc === "Bar" &&
-    !FAM_EXCLUIR_TICKET.some(ex => r.fam?.toUpperCase().trim() === ex)
-  ).reduce((a, b) => a + b.uds, 0);
-  // Comensales que pidieron en AMBOS (cocina y bar) = MIN de los dos centros.
-  // MIN = cuántos comensales alcanzaron a consumir en los dos lados a la vez.
-  const udsComensales = Math.min(udsCocina, udsBar);
-  // Ventas totales: Cocina + Bar desde MV
-  const ventasCocinaT = FILTERED.mv.filter(r => r.cc?.toLowerCase().includes("cocin")).reduce((a,b)=>a+b.ventas,0);
-  const ventasBarT    = FILTERED.mv.filter(r => r.cc?.toLowerCase().includes("bar")).reduce((a,b)=>a+b.ventas,0);
-  const ventasTotalesTicket = tven;
-  const ticketPromedio = udsComensales > 0 ? Math.round(ventasTotalesTicket / udsComensales) : 0;
-  // ─────────────────────────────────────────────────────────
-
   kpiGrid("kpi-ventas",[
     {icon:"💵",label:"Ventas Totales (MV)",value:fmt(tven),sub:"Hoja Mercancía Vendida",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
     {icon:"📦",label:"Total Unidades",value:new Intl.NumberFormat("es-CO").format(V.reduce((a,b)=>a+b.uds,0)),sub:"Productos despachados",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
-    {icon:"🧑‍🍽️",label:"Ticket Promedio",value:fmtCOP(ticketPromedio),sub:`Comió + Tomó · ${new Intl.NumberFormat("es-CO").format(udsComensales)} comensales · 🍳${new Intl.NumberFormat("es-CO").format(udsCocina)} 🍸${new Intl.NumberFormat("es-CO").format(udsBar)}`,bar:"linear-gradient(90deg,#f39c12,#d35400)"},
     {icon:"🏪",label:"Sedes",value:[...new Set(V.map(r=>r.sede))].length,sub:"Activas en el período",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
     {icon:"🍽️",label:"Categorías",value:[...new Set(V.map(r=>r.fam))].filter(Boolean).length,sub:"Familias de producto",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
   ]);
-
-  // ── TICKET GENERAL (Cocina + Bar · solo quienes pidieron en ambos) ──
-  const elTG = document.getElementById("ticket-general-box");
-  if (elTG) {
-    const pctCocGlobal = ventasTotalesTicket > 0 ? ((ventasCocinaT / ventasTotalesTicket) * 100).toFixed(1) : 0;
-    const pctBarGlobal = ventasTotalesTicket > 0 ? ((ventasBarT    / ventasTotalesTicket) * 100).toFixed(1) : 0;
-    elTG.innerHTML = `
-      <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap;padding:18px 24px;background:rgba(243,156,18,.06);border:1px solid rgba(243,156,18,.2);border-radius:12px">
-        <!-- Valor principal -->
-        <div style="text-align:center;min-width:140px">
-          <div style="font-size:.65rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Ticket Promedio</div>
-          <div style="font-size:2.4rem;font-weight:800;color:#f39c12;line-height:1">${fmtCOP(ticketPromedio)}</div>
-          <div style="font-size:.68rem;color:#6c8ebf;margin-top:5px">por comensal</div>
-        </div>
-        <!-- Separador -->
-        <div style="width:1px;height:60px;background:rgba(243,156,18,.2);flex-shrink:0"></div>
-        <!-- Desglose -->
-        <div style="display:flex;gap:24px;flex-wrap:wrap;flex:1">
-          <div>
-            <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">🍳 Ventas Cocina</div>
-            <div style="font-size:1.1rem;font-weight:700;color:#e9ecef">${fmt(ventasCocinaT)}</div>
-            <div style="font-size:.68rem;color:#6c8ebf">${pctCocGlobal}% del total</div>
-          </div>
-          <div>
-            <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">🍸 Ventas Bar</div>
-            <div style="font-size:1.1rem;font-weight:700;color:#48cae4">${fmt(ventasBarT)}</div>
-            <div style="font-size:.68rem;color:#6c8ebf">${pctBarGlobal}% del total</div>
-          </div>
-          <div>
-            <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">🍳 Uds Cocina</div>
-            <div style="font-size:1.1rem;font-weight:700;color:#e9ecef">${new Intl.NumberFormat("es-CO").format(udsCocina)}</div>
-          </div>
-          <div>
-            <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">🍸 Uds Bar</div>
-            <div style="font-size:1.1rem;font-weight:700;color:#48cae4">${new Intl.NumberFormat("es-CO").format(udsBar)}</div>
-          </div>
-          <div>
-            <div style="font-size:.62rem;color:#6c8ebf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">👥 Comensales (ambos)</div>
-            <div style="font-size:1.1rem;font-weight:700;color:#f39c12">${new Intl.NumberFormat("es-CO").format(udsComensales)}</div>
-            <div style="font-size:.66rem;color:#344e6e;font-style:italic">MIN(Cocina, Bar)</div>
-          </div>
-        </div>
-      </div>
-      <div style="margin-top:8px;text-align:right;font-size:.63rem;color:#344e6e;font-style:italic">
-        Fórmula: (Ventas Cocina + Ventas Bar) ÷ MIN(Uds Cocina, Uds Bar) · Solo comensales que pidieron en ambos centros
-      </div>`;
-  }
   // Cocina / Bar split
   const vCocina=V.filter(r=>r.cc==="Cocina");
   const vBar=V.filter(r=>r.cc==="Bar");
@@ -695,6 +640,10 @@ function renderAll(){
   rentTableFull("tbl-best-bar",bestBar,"#06d6a0","#27ae6022");
   rentTableFull("tbl-worst-cocina",worstCocina,"#e74c3c","#c0392b22");
   rentTableFull("tbl-worst-bar",worstBar,"#e74c3c","#c0392b22");
+  // Full table
+  window._rentAll=[...R].sort((a,b)=>a.margen-b.margen);
+  window._rentCCMap=ccMap;
+  renderRentAllTable();
   // Costo por familia
 
   /* ── INVENTARIOS ── */
@@ -809,6 +758,57 @@ function fmtCOP(v){
   if(!v||isNaN(v)) return "—";
   return "$ "+new Intl.NumberFormat("es-CO",{minimumFractionDigits:0,maximumFractionDigits:0}).format(Math.round(v));
 }
+function renderRentAllTable(){
+  const data=window._rentAll||[];
+  const search=(document.getElementById("rent-search")?.value||"").toLowerCase();
+  const ccF=document.getElementById("rent-cc-filter")?.value||"ALL";
+  const ccMap=window._rentCCMap||{};
+  const getCC=art=>{
+    const k=art?.trim().toUpperCase();
+    const e=ccMap[k];
+    if(!e) return "Bar";
+    return e.Cocina>=e.Bar?"Cocina":"Bar";
+  };
+  const filtered=data.filter(r=>{
+    if(search&&!r.art.toLowerCase().includes(search)&&!r.fam.toLowerCase().includes(search)) return false;
+    if(ccF!=="ALL"&&getCC(r.art)!==ccF) return false;
+    return true;
+  });
+  const wrap=document.getElementById("tbl-all-rent-wrap"); if(!wrap) return;
+  const cnt=document.getElementById("rent-count");
+  if(cnt) cnt.textContent=`${filtered.length} artículos`;
+  const fmtCOP2=v=>v>=1e6?"$"+(v/1e6).toFixed(1)+"M":v>=1e3?"$"+(v/1e3).toFixed(0)+"K":"$"+new Intl.NumberFormat("es-CO").format(Math.round(v));
+  const clr=fc=>fc<=35?"#06d6a0":"#e74c3c";
+  wrap.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:.77rem">
+    <thead style="position:sticky;top:0;background:#1b2838;z-index:2"><tr>
+      <th style="padding:6px 9px;text-align:left;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">#</th>
+      <th style="padding:6px 9px;text-align:left;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">Artículo</th>
+      <th style="padding:6px 9px;text-align:left;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">Familia</th>
+      <th style="padding:6px 9px;text-align:left;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">CC</th>
+      <th style="padding:6px 9px;text-align:right;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">Precio</th>
+      <th style="padding:6px 9px;text-align:right;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">Base</th>
+      <th style="padding:6px 9px;text-align:right;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">Costo</th>
+      <th style="padding:6px 9px;text-align:right;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">Margen $</th>
+      <th style="padding:6px 9px;text-align:right;color:#6c8ebf;font-size:.65rem;text-transform:uppercase">Costo%</th>
+    </tr></thead><tbody>`+
+  filtered.map((r,i)=>{
+    const fc=+(r.margen*100).toFixed(1);
+    const cc=getCC(r.art);
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <td style="padding:6px 9px;color:#344e6e">${i+1}</td>
+      <td style="padding:6px 9px;font-weight:600;color:#e9ecef;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.art}">${r.art}</td>
+      <td style="padding:6px 9px;color:#6c8ebf;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.fam}</td>
+      <td style="padding:6px 9px"><span style="font-size:.68rem;font-weight:600;padding:2px 7px;border-radius:5px;background:${cc==="Cocina"?"rgba(192,57,43,.15)":"rgba(0,119,182,.15)"};color:${cc==="Cocina"?"#e74c3c":"#48cae4"}">${cc}</span></td>
+      <td style="padding:6px 9px;text-align:right;font-weight:600;color:#e9ecef">${fmtCOP2(r.precio)}</td>
+      <td style="padding:6px 9px;text-align:right;color:#adb5bd">${fmtCOP2(r.base)}</td>
+      <td style="padding:6px 9px;text-align:right;color:#adb5bd">${fmtCOP2(r.costo)}</td>
+      <td style="padding:6px 9px;text-align:right;font-weight:600;color:#06d6a0">${fmtCOP2(r.base-r.costo)}</td>
+      <td style="padding:6px 9px;text-align:right"><span style="font-weight:700;font-size:.8rem;padding:2px 8px;border-radius:5px;background:${clr(fc)}22;color:${clr(fc)}">${fc}%</span></td>
+    </tr>`;
+  }).join("")+`</tbody></table>`;
+}
+function filterRentTable(){ renderRentAllTable(); }
+
 function rentTableFull(id,data,color,bg){
   const _elR=document.getElementById(id);if(!_elR)return;
   _elR.innerHTML=`<thead><tr>
@@ -976,13 +976,15 @@ function invTop10Table(id,invRows){
   const rows=Object.values(map).filter(r=>r.costo>0).sort((a,b)=>b.costo-a.costo).slice(0,10);
   const max=rows[0]?.costo||1;
   el.innerHTML=`<thead><tr>
-    <th>#</th><th>Artículo</th>
+    <th>#</th><th>Artículo</th><th>Familia</th><th>Sede</th>
     <th style="text-align:right">Costo Ajuste</th>
     <th style="width:100px">Barra</th>
   </tr></thead><tbody>`+
   rows.map((r,i)=>`<tr>
     <td class="rank ${i<3?"gold":""}">${i+1}</td>
-    <td style="max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.art}">${r.art}</td>
+    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.art}">${r.art}</td>
+    <td style="color:#6c8ebf;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.fam}</td>
+    <td style="color:#6c8ebf;white-space:nowrap">${r.sede}</td>
     <td class="val" style="color:#3a86ff">${fmtV(r.costo)}</td>
     <td><div style="height:5px;background:#243b55;border-radius:3px;width:100px;overflow:hidden"><div style="height:100%;border-radius:3px;background:linear-gradient(90deg,#3a86ff,#7209b7);width:${(r.costo/max*100).toFixed(0)}%"></div></div></td>
   </tr>`).join("")+`</tbody>`;
@@ -1184,26 +1186,46 @@ function handleFile(file){
 
 // File upload removed — Excel loaded directly from repo
 
-// Auto-load from repo — no manual upload needed
+// Auto-load from repo or fallback to local file picker
 (async()=>{
-  for(const p of["./Base_de_Informes_Rocoto.xlsx","Base_de_Informes_Rocoto.xlsx","/Base_de_Informes_Rocoto.xlsx"]){
-    try{
-      const res=await fetch(p,{cache:"no-cache"});
-      if(!res.ok)continue;
-      const buf=await res.arrayBuffer();
-      if(buf.byteLength<1000)continue;
-      loadBuffer(buf,"Base_de_Informes_Rocoto.xlsx");
-      return;
-    }catch(e){}
+  // If running on a real server (Vercel/web), fetch from same folder
+  if(location.protocol !== "file:"){
+    for(const p of["./Base_de_Informes_Rocoto.xlsx","Base_de_Informes_Rocoto.xlsx","/Base_de_Informes_Rocoto.xlsx"]){
+      try{
+        const res=await fetch(p,{cache:"no-cache"});
+        if(!res.ok)continue;
+        const buf=await res.arrayBuffer();
+        if(buf.byteLength<1000)continue;
+        loadBuffer(buf,"Base_de_Informes_Rocoto.xlsx");
+        return;
+      }catch(e){}
+    }
   }
-  // File not found — show error in loading div
-  document.getElementById("loading").innerHTML=`
-    <div style="text-align:center;padding:40px">
-      <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
-      <div style="color:#e74c3c;font-size:1rem;font-weight:600;margin-bottom:8px">No se encontró el archivo Excel</div>
-      <div style="color:#6c8ebf;font-size:.82rem">Asegúrate de que <code style="background:rgba(0,180,216,.1);padding:2px 6px;border-radius:4px;color:#48cae4">Base_de_Informes_Rocoto.xlsx</code> esté en la raíz del repositorio</div>
-    </div>`;
+  // Local file:// or fetch failed — show file picker
+  showFilePicker();
 })();
+
+function showFilePicker(){
+  document.getElementById("loading").innerHTML=`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:18px;text-align:center;padding:24px">
+      <div style="font-size:3rem">🌶️</div>
+      <div style="font-size:1.4rem;font-weight:700;color:#e9ecef">Rocoto Dashboard</div>
+      <div style="font-size:.85rem;color:#6c8ebf;max-width:380px">Selecciona el archivo Excel para cargar el dashboard</div>
+      <label style="background:linear-gradient(135deg,#0096c7,#023e8a);color:#fff;font-weight:700;padding:12px 28px;border-radius:10px;font-size:.9rem;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:8px">
+        📂 Seleccionar Base_de_Informes_Rocoto.xlsx
+        <input type="file" accept=".xlsx,.xls" id="file-input-fallback" style="display:none"/>
+      </label>
+      <div style="font-size:.72rem;color:#344e6e;background:rgba(0,180,216,.06);border:1px solid rgba(0,180,216,.12);border-radius:8px;padding:10px 16px;max-width:420px">
+        💡 En Vercel el archivo carga automáticamente. Localmente selecciónalo una vez.
+      </div>
+    </div>`;
+  document.getElementById("file-input-fallback").addEventListener("change",e=>{
+    const f=e.target.files[0]; if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>loadBuffer(ev.target.result,f.name);
+    r.readAsArrayBuffer(f);
+  });
+}
 </script>
 </body>
 </html>
