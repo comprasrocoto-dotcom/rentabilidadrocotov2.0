@@ -104,6 +104,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <button onclick="showTab('rentabilidad',this)">💰 Rentabilidad</button>
   <button onclick="showTab('participacion',this)">📈 Participación</button>
   <button onclick="showTab('inventarios',this)">📦 Inventarios</button>
+  <button onclick="showTab('traslados',this)">📦 Traslados</button>
 </nav>
 
 <!-- FILTER BAR -->
@@ -347,6 +348,61 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
 
+    
+    <!-- TRASLADOS -->
+    <div id="tab-traslados" class="section">
+      <div class="kpi-grid" id="kpi-tras" style="margin-bottom:16px"></div>
+      <!-- ROW 1: Donut sede + Flujo -->
+      <div class="g2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-title">Participación de Traslados por Sede</div>
+          <div class="card-sub">Valor trasladado · % por sede destino</div>
+          <div style="height:260px"><canvas id="ch-tras-sede"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Flujo de Mercancía · Planta → Sede</div>
+          <div class="card-sub">Valor recibido por cada sede desde la planta</div>
+          <div style="height:260px"><canvas id="ch-tras-flujo"></canvas></div>
+        </div>
+      </div>
+      <!-- ROW 2: Evolucion mensual -->
+      <div class="g1 card" style="margin-bottom:16px">
+        <div class="card-title">📈 Evolución Mensual de Traslados</div>
+        <div class="card-sub">Valor trasladado por mes</div>
+        <div style="height:280px"><canvas id="ch-tras-mes"></canvas></div>
+      </div>
+      <!-- ROW 3: Top 20 productos -->
+      <div class="g1 card" style="margin-bottom:16px">
+        <div class="card-title">🏆 Top 20 Productos Más Trasladados</div>
+        <div class="card-sub">Por valor trasladado · orden descendente</div>
+        <div style="height:520px"><canvas id="ch-tras-top"></canvas></div>
+      </div>
+      <!-- ROW 4: Detalle tabla -->
+      <div class="g1 card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <div class="card-title">📋 Detalle de Traslados</div>
+            <div class="card-sub" id="tras-count">0 registros</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="tras-search" type="text" placeholder="🔍 Buscar producto, sede o documento…" oninput="renderTrasTabla(window.__TRAS_ROWS||[])" style="background:#0d1b2a;border:1px solid rgba(0,180,216,.3);color:#e9ecef;padding:7px 12px;border-radius:8px;font-size:12px;min-width:240px">
+            <button onclick="exportTrasExcel()" style="background:linear-gradient(90deg,#27ae60,#2ecc71);border:none;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">⬇ Exportar Excel</button>
+          </div>
+        </div>
+        <div style="height:10px"></div>
+        <div style="overflow-x:auto">
+          <table id="tbl-tras">
+            <thead><tr>
+              <th>#</th><th>Fecha</th><th>Documento</th><th>Sede Origen</th><th>Sede Destino</th><th>Producto</th>
+              <th style="text-align:right">Cantidad</th><th style="text-align:right">Costo Unit.</th><th style="text-align:right">Valor Total</th>
+            </tr></thead>
+            <tbody id="tbl-tras-body"></tbody>
+          </table>
+        </div>
+        <div id="tras-more"></div>
+      </div>
+    </div>
+
     </div><!-- /dashboard -->
 </main>
 
@@ -377,8 +433,8 @@ const charts={};
 const mkChart=(id,cfg)=>{if(charts[id])charts[id].destroy();const c=document.getElementById(id);if(!c)return;charts[id]=new Chart(c,cfg);};
 
 /* ── RAW DATA STORE ─────────────────────────────────────── */
-let RAW={ventas:[],compras:[],mv:[],rent:[],inv:[]};
-let FILTERED={ventas:[],compras:[],mv:[],inv:[],rent:[]};
+let RAW={ventas:[],compras:[],mv:[],rent:[],inv:[],tras:[]};
+let FILTERED={ventas:[],compras:[],mv:[],inv:[],rent:[],tras:[]};
 
 /* ── EXCEL PARSER ───────────────────────────────────────── */
 function parseExcel(wb){
@@ -458,6 +514,7 @@ function applyFilter(){
   FILTERED.compras=RAW.compras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede||r.esPlanta));
   FILTERED.mv=RAW.mv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede));
   FILTERED.inv=(RAW.inv&&RAW.inv.length)?RAW.inv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)):[];
+  FILTERED.tras=(RAW.tras&&RAW.tras.length)?RAW.tras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)):[];
   // Rent filter by sede: keep only articles sold in that sede (from ventas)
   if(sede==="ALL"){
     FILTERED.rent=RAW.rent.filter(r=>r.tarifa==="TARIFA ROCOTO"||r.tarifa==="TARIFA MALANGA"||r.tarifa==="TARIFA HOTWINGS"||(!r.tarifa.toLowerCase().includes("rappi")&&!r.tarifa.toLowerCase().includes("personal")));
@@ -557,44 +614,23 @@ function renderAll(){
   genericTable("tbl-art-c",topArt,tc,"Artículo");
 
   /* ── FOOD COST ── */
-  const fcRows=MV.map(r=>({...r,fc:+(r.prom>1?r.prom:r.prom*100).toFixed(2)}));
-  const coc=fcRows.filter(r=>r.cc?.toLowerCase().includes("cocin"));
-  const bar=fcRows.filter(r=>r.cc?.toLowerCase().includes("bar"));
-  const avgC=coc.length?(coc.reduce((a,b)=>a+b.fc,0)/coc.length).toFixed(1):"—";
-  const avgB=bar.length?(bar.reduce((a,b)=>a+b.fc,0)/bar.length).toFixed(1):"—";
-  kpiGrid("kpi-fc",[
-    {icon:"🍳",label:"Costo Cocina Prom.",value:`${avgC}%`,sub:"Promedio todas las sedes",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
-    {icon:"🍸",label:"Costo Bar Prom.",value:`${avgB}%`,sub:"Promedio todas las sedes",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
-    {icon:"📦",label:"Costo Global",value:`${fcGlobal}%`,sub:fcGlobal<36?"✓ En rango":"⚠ Revisar",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
-    {icon:"📉",label:"Mejor Costo Sede",value:fcRows.length?fclb(Math.min(...fcRows.map(r=>r.fc))):"—",sub:fcRows.length?fcRows.sort((a,b)=>a.fc-b.fc)[0]?.sede:"",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
-  ]);
-  // Costo global por sede
-  const sedes=[...new Set(fcRows.map(r=>r.sede))];
-  const fcBySede=sedes.map(s=>{
-    const rows=fcRows.filter(r=>r.sede===s);
-    const tvs=rows.reduce((a,b)=>a+b.ventas,0);
-    const tms=rows.reduce((a,b)=>a+b.mv,0);
-    return{n:s,v:tvs>0?+(tms/tvs*100).toFixed(2):0};
-  });
-  barV("ch-fc-sede",fcBySede.map(r=>r.n),fcBySede.map(r=>r.v),fcBySede.map(r=>fclr(r.v)),true,true);
-  // Costo por CC
-  const fcByCC=[
-    {n:"Cocina",v:avgC==="—"?0:parseFloat(avgC)},
-    {n:"Bar",v:avgB==="—"?0:parseFloat(avgB)},
-  ];
-  barV("ch-fc-cc",fcByCC.map(r=>r.n),fcByCC.map(r=>r.v),[fclr(parseFloat(avgC)||0),fclr(parseFloat(avgB)||0)],true,true);
-  // Costo evolución
-  const meses=[...new Set(fcRows.map(r=>r.mes))];
-  const evolDatasets=sedes.map((s,i)=>({
-    label:s,
-    data:meses.map(m=>{
-      const rows=fcRows.filter(r=>r.sede===s&&r.mes===m);
-      const tvs=rows.reduce((a,b)=>a+b.ventas,0);
-      const tms=rows.reduce((a,b)=>a+b.mv,0);
-      return tvs>0?+(tms/tvs*100).toFixed(2):null;
-    }),
-    backgroundColor:P[i]+"cc",borderColor:P[i],borderWidth:1,borderRadius:6,
-  }));
+  const fcRows=MV.map(r=>({...r,fc:+(r.prom>1?r.prom:r.prom*100).toFixed(2)}))
+
+  // ── TRASLADOS ──
+  const trasNum=(s)=>{ if(s===undefined||s===null)return 0; let x=String(s).replace(/[^0-9.,-]/g,""); if(x.indexOf(",")>=0){x=x.replace(/\./g,"").replace(",",".");} else {x=x.replace(/\./g,"");} return parseFloat(x)||0; };
+  RAW.tras=toRows("TRASLADOS").map(r=>({
+    fecha:col(r,["Fecha"]),
+    mes:col(r,["Mes"]).substring(0,3).toLowerCase(),
+    doc:col(r,["Serie"]),
+    sede:col(r,["Almac"]).replace("ROCOTO ","").toUpperCase().trim(),
+    cc:col(r,["Centro"]),
+    fam:col(r,["Familia"]),
+    art:col(r,["Art"]),
+    tipoDoc:col(r,["Tipo Documento"]),
+    cant:trasNum(col(r,["Variaci"])),
+    unit:trasNum(col(r,["Coste Unitario"])),
+    valor:trasNum(col(r,["Coste Variaci"]))
+  })).filter(r=>r.sede&&r.art&&r.cant>0&&r.valor>0);;
   mkChart("ch-fc-evol",{type:"bar",data:{labels:meses,datasets:evolDatasets},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:28}},plugins:{legend:{labels:{color:"#6c8ebf",boxWidth:12}},tooltip:{...TIP,callbacks:{label:c=>`${c.dataset.label}: ${c.raw}%`}},datalabels:{anchor:"end",align:"top",color:"#e9ecef",font:{size:10,weight:"bold"},formatter:v=>v?v.toFixed(2)+"%":""}},scales:{x:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf"}},y:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf",callback:v=>v+"%"},suggestedMin:20,suggestedMax:50}}}});
   // Semáforos
   renderFCRows("fc-rows-cocina",coc);
@@ -717,6 +753,65 @@ function renderAll(){
   const tvBarP=vBarP.reduce((a,b)=>a+b.base,0);
   partTable("tbl-part-cocina",groupBy(vCocinaP,"art","base",15),tv);
   partTable("tbl-part-bar",groupBy(vBarP,"art","base",15),tv);
+  renderTraslados();
+}
+
+
+function renderTraslados(){
+  const T=FILTERED.tras||[];
+  // KPIs
+  const totalMov=T.length;
+  const valorTotal=T.reduce((a,b)=>a+(b.valor||0),0);
+  const prodUnicos=new Set(T.map(r=>r.art).filter(Boolean)).size;
+  // Participacion por sede destino
+  const bySede=groupBy(T,"sede","valor");
+  const sedeTop=bySede.length?bySede[0].n:"—";
+  // KPI cards
+  kpiGrid("kpi-tras",[
+    {icon:"📦",label:"Total Traslados",value:new Intl.NumberFormat("es-CO").format(totalMov),sub:"Movimientos registrados",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"💰",label:"Valor Total Trasladado",value:fmt(valorTotal),sub:"Suma Coste Variación",bar:"linear-gradient(90deg,#27ae60,#2ecc71)"},
+    {icon:"🏷️",label:"Productos Trasladados",value:prodUnicos,sub:"Referencias únicas",bar:"linear-gradient(90deg,#f39c12,#f1c40f)"},
+    {icon:"🏭",label:"Origen Principal",value:"Planta",sub:"Envíos de planta de producción",bar:"linear-gradient(90deg,#8e44ad,#9b59b6)"},
+    {icon:"📥",label:"Sede que Más Recibe",value:sedeTop,sub:bySede.length?fmt(bySede[0].v):"—",bar:"linear-gradient(90deg,#e74c3c,#c0392b)"}
+  ]);
+  // Donut participacion por sede
+  doughnut("ch-tras-sede",bySede.map(r=>r.n),bySede.map(r=>r.v),P);
+  // Top 20 productos mas trasladados (por valor)
+  const topProd=groupBy(T,"art","valor",20);
+  hbar("ch-tras-top",topProd,P,520);
+  // Flujo Planta -> Sede (bar)
+  const flujo=bySede.map(r=>({n:"Planta → "+r.n,v:r.v}));
+  hbar("ch-tras-flujo",flujo,["#8e44ad","#00b4d8","#e74c3c","#27ae60"],260);
+  // Evolucion mensual (valor por mes en orden cronologico)
+  const ORDEN=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const mm={}; T.forEach(r=>{const m=(r.mes||"").toLowerCase();if(m)mm[m]=(mm[m]||0)+(r.valor||0);});
+  const meses=ORDEN.filter(m=>mm[m]!==undefined);
+  mkChart("ch-tras-mes",{type:"line",data:{labels:meses.map(m=>m.toUpperCase()),datasets:[{label:"Valor Trasladado",data:meses.map(m=>mm[m]),borderColor:"#00b4d8",backgroundColor:"rgba(0,180,216,.15)",fill:true,tension:.3,pointBackgroundColor:"#48cae4",pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:false},tooltip:{...TIP,callbacks:{label:c=>" "+fmt(c.raw)}}},scales:{x:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf"}},y:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf",callback:v=>fmt(v)}}}}});
+  // Tabla detalle
+  const rows=[...T].sort((a,b)=>(b.valor||0)-(a.valor||0));
+  window.__TRAS_ROWS=rows;
+  renderTrasTabla(rows);
+}
+
+function renderTrasTabla(rows){
+  const q=(document.getElementById("tras-search")?.value||"").toLowerCase().trim();
+  let data=rows;
+  if(q)data=rows.filter(r=>(r.art||"").toLowerCase().includes(q)||(r.sede||"").toLowerCase().includes(q)||(r.doc||"").toLowerCase().includes(q));
+  document.getElementById("tras-count").textContent=new Intl.NumberFormat("es-CO").format(data.length)+" registros";
+  const body=data.slice(0,500).map((r,i)=>`<tr><td>${i+1}</td><td>${r.fecha||""}</td><td>${r.doc||""}</td><td>🏭 Planta</td><td>${r.sede||""}</td><td>${r.art||""}</td><td style="text-align:right">${new Intl.NumberFormat("es-CO").format(r.cant||0)}</td><td style="text-align:right">${fmt(r.unit||0)}</td><td style="text-align:right">${fmt(r.valor||0)}</td></tr>`).join("");
+  document.getElementById("tbl-tras-body").innerHTML=body||`<tr><td colspan="9" style="text-align:center;color:#6c8ebf;padding:20px">Sin registros</td></tr>`;
+  const more=data.length>500?`<div style="color:#6c8ebf;font-size:11px;padding:8px">Mostrando 500 de ${data.length}. Use la búsqueda o exporte a Excel para ver todos.</div>`:"";
+  document.getElementById("tras-more").innerHTML=more;
+}
+
+function exportTrasExcel(){
+  const rows=window.__TRAS_ROWS||[];
+  const aoa2=[["Fecha","Documento","Sede Origen","Sede Destino","Producto","Cantidad","Costo Unitario","Valor Total"]];
+  rows.forEach(r=>aoa2.push([r.fecha||"",r.doc||"","Planta de Producción",r.sede||"",r.art||"",r.cant||0,r.unit||0,r.valor||0]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa2);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Traslados");
+  XLSX.writeFile(wb,"Traslados_Rocoto.xlsx");
 }
 
 /* ── UI HELPERS ─────────────────────────────────────────── */
