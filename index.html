@@ -1186,23 +1186,66 @@ function handleFile(file){
 
 // File upload removed — Excel loaded directly from repo
 
-// Auto-load from repo or fallback to local file picker
-(async()=>{
-  // If running on a real server (Vercel/web), fetch from same folder
-  if(location.protocol !== "file:"){
-    for(const p of["./Base_de_Informes_Rocoto.xlsx","Base_de_Informes_Rocoto.xlsx","/Base_de_Informes_Rocoto.xlsx"]){
-      try{
-        const res=await fetch(p,{cache:"no-cache"});
-        if(!res.ok)continue;
-        const buf=await res.arrayBuffer();
-        if(buf.byteLength<1000)continue;
-        loadBuffer(buf,"Base_de_Informes_Rocoto.xlsx");
-        return;
-      }catch(e){}
+// ====== Sincronizacion automatica con Google Drive / Google Sheets ======
+const DATA_URL = "https://docs.google.com/spreadsheets/d/1k0ZWryExkWRmaj9ZIvPCU-YgJDQSWE_-/export?format=xlsx";
+const POLL_MS  = 60000; // revisar cambios cada 60 s
+let lastHash = null;    // huella del ultimo archivo procesado
+
+// Hash rapido (FNV-1a con muestreo) para detectar si el contenido cambio
+function bufHash(buf){
+  const v = new Uint8Array(buf);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < v.length; i += 521){
+    h ^= v[i]; h = (h * 0x01000193) >>> 0;
+  }
+  return (h >>> 0).toString(16) + "-" + v.length;
+}
+
+function setSyncStatus(ok, msg){
+  const badge = document.getElementById("status-badge");
+  const time  = document.getElementById("update-time");
+  if (badge){
+    badge.style.display = "flex";
+    if (ok){
+      badge.style.color = "#2ecc71";
+      badge.textContent = "Sincronizado";
+    } else {
+      badge.style.color = "#e74c3c";
+      badge.textContent = (msg || "Sin conexion con Drive");
     }
   }
-  // Local file:// or fetch failed — show file picker
-  showFilePicker();
+  if (ok && time){
+    time.textContent = new Date().toLocaleString("es-CO", {dateStyle:"short", timeStyle:"short"});
+  }
+}
+
+async function syncFromDrive(isFirst){
+  try{
+    const res = await fetch(DATA_URL + "&t=" + Date.now(), {cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const buf = await res.arrayBuffer();
+    if(buf.byteLength < 1000) throw new Error("Archivo vacio o sin acceso");
+    const h = bufHash(buf);
+    if(h !== lastHash){
+      lastHash = h;
+      loadBuffer(buf, "Base_de_Informes_Rocoto.xlsx");
+    }
+    setSyncStatus(true);
+  }catch(err){
+    if(isFirst){
+      setSyncStatus(false, "Sin conexion con Drive");
+      showFilePicker();
+    } else {
+      setSyncStatus(false, "Reintentando...");
+    }
+  }
+}
+
+// Arranque: carga inicial + polling continuo
+(async()=>{
+  if(location.protocol === "file:"){ showFilePicker(); return; }
+  await syncFromDrive(true);
+  setInterval(() => syncFromDrive(false), POLL_MS);
 })();
 
 function showFilePicker(){
