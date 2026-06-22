@@ -381,7 +381,7 @@ let FILTERED={ventas:[],compras:[],mv:[],inv:[],rent:[]};
 
 /* ── EXCEL PARSER ───────────────────────────────────────── */
 function parseExcel(wb){
-  const toRows=name=>{const ws=wb.Sheets[name];return ws?XLSX.utils.sheet_to_json(ws,{defval:""}):[];};
+  const toRows=(name,opts)=>{const ws=wb.Sheets[name];return ws?XLSX.utils.sheet_to_json(ws,Object.assign({defval:""},opts||{})):[];};
 
   RAW.ventas=toRows("VENTAS").map(r=>({
     sede:col(r,["Establecimiento","Sede"]).replace("ROCOTTO","ROCOTO").replace("ROCOTO ",""),
@@ -430,7 +430,7 @@ function parseExcel(wb){
     ajuste:colN(r,["Ajuste"]),
     estado:col(r,["Estado"]),
   })).filter(r=>r.sede&&r.estado);
-  RAW.rent=toRows("RENTABILIDAD").map(r=>({
+  RAW.rent=toRows("RENTABILIDAD",{range:1}).map(r=>({
     fam:col(r,["Familia"]),art:col(r,["Art"]),
     tarifa:col(r,["Tarifa"]),
     precio:colN(r,["Precio"]),
