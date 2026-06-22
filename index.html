@@ -496,6 +496,22 @@ function parseExcel(wb){
     margen:colN(r,["Margen"]),
   })).filter(r=>r.margen>0&&r.margen<1&&r.precio>0);
 
+  // ── TRASLADOS ──
+  const trasNum=(s)=>{ if(s===undefined||s===null)return 0; let x=String(s).replace(/[^0-9.,-]/g,""); if(x.indexOf(",")>=0){x=x.replace(/\./g,"").replace(",",".");} else {x=x.replace(/\./g,"");} return parseFloat(x)||0; };
+  RAW.tras=toRows("TRASLADOS").map(r=>({
+    fecha:col(r,["Fecha"]),
+    mes:col(r,["Mes"]).substring(0,3).toLowerCase(),
+    doc:col(r,["Serie"]),
+    sede:col(r,["Almac"]).replace("ROCOTO ","").toUpperCase().trim(),
+    cc:col(r,["Centro"]),
+    fam:col(r,["Familia"]),
+    art:col(r,["Art"]),
+    tipoDoc:col(r,["Tipo Documento"]),
+    cant:trasNum(col(r,["Variaci"])),
+    unit:trasNum(col(r,["Coste Unitario"])),
+    valor:trasNum(col(r,["Coste Variaci"]))
+  })).filter(r=>r.sede&&r.art&&r.cant>0&&r.valor>0);
+
   // Populate filters
   const meses=[...new Set(RAW.ventas.map(r=>r.mes))].filter(Boolean);
   const sedes=[...new Set(RAW.ventas.map(r=>r.sede))].filter(Boolean);
@@ -614,23 +630,7 @@ function renderAll(){
   genericTable("tbl-art-c",topArt,tc,"Artículo");
 
   /* ── FOOD COST ── */
-  const fcRows=MV.map(r=>({...r,fc:+(r.prom>1?r.prom:r.prom*100).toFixed(2)}))
-
-  // ── TRASLADOS ──
-  const trasNum=(s)=>{ if(s===undefined||s===null)return 0; let x=String(s).replace(/[^0-9.,-]/g,""); if(x.indexOf(",")>=0){x=x.replace(/\./g,"").replace(",",".");} else {x=x.replace(/\./g,"");} return parseFloat(x)||0; };
-  RAW.tras=toRows("TRASLADOS").map(r=>({
-    fecha:col(r,["Fecha"]),
-    mes:col(r,["Mes"]).substring(0,3).toLowerCase(),
-    doc:col(r,["Serie"]),
-    sede:col(r,["Almac"]).replace("ROCOTO ","").toUpperCase().trim(),
-    cc:col(r,["Centro"]),
-    fam:col(r,["Familia"]),
-    art:col(r,["Art"]),
-    tipoDoc:col(r,["Tipo Documento"]),
-    cant:trasNum(col(r,["Variaci"])),
-    unit:trasNum(col(r,["Coste Unitario"])),
-    valor:trasNum(col(r,["Coste Variaci"]))
-  })).filter(r=>r.sede&&r.art&&r.cant>0&&r.valor>0);;
+  const fcRows=MV.map(r=>({...r,fc:+(r.prom>1?r.prom:r.prom*100).toFixed(2)}));
   mkChart("ch-fc-evol",{type:"bar",data:{labels:meses,datasets:evolDatasets},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:28}},plugins:{legend:{labels:{color:"#6c8ebf",boxWidth:12}},tooltip:{...TIP,callbacks:{label:c=>`${c.dataset.label}: ${c.raw}%`}},datalabels:{anchor:"end",align:"top",color:"#e9ecef",font:{size:10,weight:"bold"},formatter:v=>v?v.toFixed(2)+"%":""}},scales:{x:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf"}},y:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf",callback:v=>v+"%"},suggestedMin:20,suggestedMax:50}}}});
   // Semáforos
   renderFCRows("fc-rows-cocina",coc);
