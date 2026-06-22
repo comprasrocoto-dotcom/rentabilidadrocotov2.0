@@ -496,10 +496,13 @@ function renderAll(){
     {icon:"📦",label:"Mercancía Vendida",value:fmt(tmv),sub:"Costo directo de ventas",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
     {icon:"📊",label:"Costo Global",value:`${fcGlobal}%`,sub:fcGlobal<36?"✓ En rango":"⚠ Revisar",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
   ]);
-  const bySede=groupBy(V,"sede","base",10);
-  const byMes=groupBy(V,"mes","base",12);
+  const bySede=groupBy(MV,"sede","ventas",10);
+  const byMes=groupBy(MV,"mes","ventas",12);
   doughnut("ch-sede-pie",bySede.map(r=>r.n),bySede.map(r=>r.v),P);
   barV("ch-ventas-mes",byMes.map(r=>r.n),byMes.map(r=>r.v),P);
+  /* Validacion automatica de consistencia KPI vs grafico de ventas (fuente unica: MERCANCIA VENDIDA) */
+  const ventasGrafico=byMes.reduce((a,b)=>a+b.v,0);
+  if(Math.abs(tven-ventasGrafico)>1){console.warn("Inconsistencia detectada entre KPI y grafico de ventas",{kpi:tven,grafico:ventasGrafico,diff:tven-ventasGrafico});}
   hbar("ch-fam-v-res",groupBy(V,"fam","base",5),P,230);
   hbar("ch-fam-c-res",groupBy(C,"fam","total",5),G,230);
 
