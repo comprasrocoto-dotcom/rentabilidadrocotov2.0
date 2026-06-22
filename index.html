@@ -830,12 +830,13 @@ function renderTraslados(){
   renderTrasTabla(rows);
 }
 
+function fmtFecha(f){ if(!f)return ""; try{ const d=new Date(f); if(isNaN(d))return String(f); const dd=String(d.getDate()).padStart(2,"0"),mm=String(d.getMonth()+1).padStart(2,"0"); return dd+"/"+mm+"/"+d.getFullYear(); }catch(e){ return String(f); } }
 function renderTrasTabla(rows){
   const q=(document.getElementById("tras-search")?.value||"").toLowerCase().trim();
   let data=rows;
   if(q)data=rows.filter(r=>(r.art||"").toLowerCase().includes(q)||(r.sede||"").toLowerCase().includes(q)||(r.doc||"").toLowerCase().includes(q));
   document.getElementById("tras-count").textContent=new Intl.NumberFormat("es-CO").format(data.length)+" registros";
-  const body=data.slice(0,500).map((r,i)=>`<tr><td>${i+1}</td><td>${r.fecha||""}</td><td>${r.doc||""}</td><td>🏭 Planta</td><td>${r.sede||""}</td><td>${r.art||""}</td><td style="text-align:right">${new Intl.NumberFormat("es-CO").format(r.cant||0)}</td><td style="text-align:right">${fmt(r.unit||0)}</td><td style="text-align:right">${fmt(r.valor||0)}</td></tr>`).join("");
+  const body=data.slice(0,500).map((r,i)=>`<tr><td>${i+1}</td><td>${fmtFecha(r.fecha)}</td><td>${r.doc||""}</td><td>🏭 Planta</td><td>${r.sede||""}</td><td>${r.art||""}</td><td style="text-align:right">${new Intl.NumberFormat("es-CO").format(r.cant||0)}</td><td style="text-align:right">${fmt(r.unit||0)}</td><td style="text-align:right">${fmt(r.valor||0)}</td></tr>`).join("");
   document.getElementById("tbl-tras-body").innerHTML=body||`<tr><td colspan="9" style="text-align:center;color:#6c8ebf;padding:20px">Sin registros</td></tr>`;
   const more=data.length>500?`<div style="color:#6c8ebf;font-size:11px;padding:8px">Mostrando 500 de ${data.length}. Use la búsqueda o exporte a Excel para ver todos.</div>`:"";
   document.getElementById("tras-more").innerHTML=more;
@@ -844,7 +845,7 @@ function renderTrasTabla(rows){
 function exportTrasExcel(){
   const rows=window.__TRAS_ROWS||[];
   const aoa2=[["Fecha","Documento","Sede Origen","Sede Destino","Producto","Cantidad","Costo Unitario","Valor Total"]];
-  rows.forEach(r=>aoa2.push([r.fecha||"",r.doc||"","Planta de Producción",r.sede||"",r.art||"",r.cant||0,r.unit||0,r.valor||0]));
+  rows.forEach(r=>aoa2.push([fmtFecha(r.fecha),r.doc||"","Planta de Producción",r.sede||"",r.art||"",r.cant||0,r.unit||0,r.valor||0]));
   const ws=XLSX.utils.aoa_to_sheet(aoa2);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"Traslados");
