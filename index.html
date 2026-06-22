@@ -81,6 +81,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .part-bar-bg{flex:1;height:8px;background:#243b55;border-radius:4px;overflow:hidden}
 .part-bar-fill{height:100%;border-radius:4px}
 @media(max-width:900px){.g2,.g3{grid-template-columns:1fr}.fc-row{grid-template-columns:100px 1fr 48px 68px}}
+.kpi-grid.sticky-kpi{position:sticky;top:60px; /* alto del header */z-index:50;background:#0d1b2a;padding-top:10px;padding-bottom:6px;margin-left:-24px;margin-right:-24px;padding-left:24px;padding-right:24px;}
 </style>
 </head>
 <body>
@@ -179,7 +180,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
     <!-- COMPRAS -->
     <div id="tab-compras" class="section">
-      <div class="kpi-grid" id="kpi-compras"></div>
+      <div class="kpi-grid sticky-kpi" id="kpi-compras"></div>
       <div class="g2">
         <div class="card"><div class="card-title">Top 10 Proveedores</div><div class="card-sub">Por monto total comprado</div><div style="height:340px"><canvas id="ch-prov"></canvas></div></div>
         <div class="card"><div class="card-title">Todas las Categorías de Compra</div><div class="card-sub">Distribución por familia de insumo</div><div style="height:340px"><canvas id="ch-fam-c-all"></canvas></div></div>
