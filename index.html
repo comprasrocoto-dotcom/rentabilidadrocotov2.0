@@ -631,6 +631,43 @@ function renderAll(){
 
   /* ── FOOD COST ── */
   const fcRows=MV.map(r=>({...r,fc:+(r.prom>1?r.prom:r.prom*100).toFixed(2)}));
+  const coc=fcRows.filter(r=>r.cc?.toLowerCase().includes("cocin"));
+  const bar=fcRows.filter(r=>r.cc?.toLowerCase().includes("bar"));
+  const avgC=coc.length?(coc.reduce((a,b)=>a+b.fc,0)/coc.length).toFixed(1):"—";
+  const avgB=bar.length?(bar.reduce((a,b)=>a+b.fc,0)/bar.length).toFixed(1):"—";
+  kpiGrid("kpi-fc",[
+    {icon:"🍳",label:"Costo Cocina Prom.",value:`${avgC}%`,sub:"Promedio todas las sedes",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"🍸",label:"Costo Bar Prom.",value:`${avgB}%`,sub:"Promedio todas las sedes",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"📦",label:"Costo Global",value:`${fcGlobal}%`,sub:fcGlobal<36?"✓ En rango":"⚠ Revisar",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
+    {icon:"📉",label:"Mejor Costo Sede",value:fcRows.length?fclb(Math.min(...fcRows.map(r=>r.fc))):"—",sub:fcRows.length?fcRows.sort((a,b)=>a.fc-b.fc)[0]?.sede:"",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
+  ]);
+  // Costo global por sede
+  const sedes=[...new Set(fcRows.map(r=>r.sede))];
+  const fcBySede=sedes.map(s=>{
+    const rows=fcRows.filter(r=>r.sede===s);
+    const tvs=rows.reduce((a,b)=>a+b.ventas,0);
+    const tms=rows.reduce((a,b)=>a+b.mv,0);
+    return{n:s,v:tvs>0?+(tms/tvs*100).toFixed(2):0};
+  });
+  barV("ch-fc-sede",fcBySede.map(r=>r.n),fcBySede.map(r=>r.v),fcBySede.map(r=>fclr(r.v)),true,true);
+  // Costo por CC
+  const fcByCC=[
+    {n:"Cocina",v:avgC==="—"?0:parseFloat(avgC)},
+    {n:"Bar",v:avgB==="—"?0:parseFloat(avgB)},
+  ];
+  barV("ch-fc-cc",fcByCC.map(r=>r.n),fcByCC.map(r=>r.v),[fclr(parseFloat(avgC)||0),fclr(parseFloat(avgB)||0)],true,true);
+  // Costo evolución
+  const meses=[...new Set(fcRows.map(r=>r.mes))];
+  const evolDatasets=sedes.map((s,i)=>({
+    label:s,
+    data:meses.map(m=>{
+      const rows=fcRows.filter(r=>r.sede===s&&r.mes===m);
+      const tvs=rows.reduce((a,b)=>a+b.ventas,0);
+      const tms=rows.reduce((a,b)=>a+b.mv,0);
+      return tvs>0?+(tms/tvs*100).toFixed(2):null;
+    }),
+    backgroundColor:P[i]+"cc",borderColor:P[i],borderWidth:1,borderRadius:6,
+  }));
   mkChart("ch-fc-evol",{type:"bar",data:{labels:meses,datasets:evolDatasets},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:28}},plugins:{legend:{labels:{color:"#6c8ebf",boxWidth:12}},tooltip:{...TIP,callbacks:{label:c=>`${c.dataset.label}: ${c.raw}%`}},datalabels:{anchor:"end",align:"top",color:"#e9ecef",font:{size:10,weight:"bold"},formatter:v=>v?v.toFixed(2)+"%":""}},scales:{x:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf"}},y:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf",callback:v=>v+"%"},suggestedMin:20,suggestedMax:50}}}});
   // Semáforos
   renderFCRows("fc-rows-cocina",coc);
