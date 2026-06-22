@@ -497,7 +497,7 @@ function parseExcel(wb){
   })).filter(r=>r.margen>0&&r.margen<1&&r.precio>0);
 
   // ── TRASLADOS ──
-  const trasNum=(s)=>{ if(s===undefined||s===null)return 0; let x=String(s).replace(/[^0-9.,-]/g,""); if(x.indexOf(",")>=0){x=x.replace(/\./g,"").replace(",",".");} else {x=x.replace(/\./g,"");} return parseFloat(x)||0; };
+  const trasNum=(s)=>{ if(s===undefined||s===null||s==="")return 0; if(typeof s==="number")return s; let x=String(s).replace(/[^0-9.\-]/g,""); return parseFloat(x)||0; };
   RAW.tras=toRows("TRASLADOS").map(r=>({
     fecha:col(r,["Fecha"]),
     mes:col(r,["Mes"]).substring(0,3).toLowerCase(),
