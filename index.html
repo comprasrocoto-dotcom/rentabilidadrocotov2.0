@@ -445,7 +445,7 @@ let FILTERED={ventas:[],ventasExcl:[],compras:[],mv:[],inv:[],rent:[],tras:[]};
 const MESES_ORDEN_MV=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 function computeMV(){
   const ccs=["Bar","Cocina"];
-  const invBC=RAW.inv.filter(r=>r.cc==="Bar"||r.cc==="Cocina");
+  const invBC=RAW.inv.filter(r=>(r.cc==="Bar"||r.cc==="Cocina")&&!r.sede.toUpperCase().includes("PLANTA"));
 
   const invFinMap={};
   invBC.forEach(r=>{
@@ -575,9 +575,9 @@ function applyFilter(){
   const esOtros=cc=>{const c=(cc||"").trim().toLowerCase(); return c==="otros"||c==="otro";};
   FILTERED.ventas=RAW.ventas.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)&&!esOtros(r.cc));
   FILTERED.ventasExcl=RAW.ventas.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)&&esOtros(r.cc));
-  FILTERED.compras=RAW.compras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede||r.esPlanta)&&!esOtros(r.cc));
+  FILTERED.compras=RAW.compras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)&&!r.esPlanta&&!esOtros(r.cc));
   FILTERED.mv=RAW.mv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede));
-  FILTERED.inv=(RAW.inv&&RAW.inv.length)?RAW.inv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)):[];
+  FILTERED.inv=(RAW.inv&&RAW.inv.length)?RAW.inv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)&&!r.sede.toUpperCase().includes("PLANTA")):[];
   FILTERED.tras=(RAW.tras&&RAW.tras.length)?RAW.tras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)):[];
   // Rent filter by sede: keep only articles sold in that sede (from ventas)
   if(sede==="ALL"){
