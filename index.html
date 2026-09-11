@@ -434,7 +434,60 @@ const mkChart=(id,cfg)=>{if(charts[id])charts[id].destroy();const c=document.get
 
 /* ── RAW DATA STORE ─────────────────────────────────────── */
 let RAW={ventas:[],compras:[],mv:[],rent:[],inv:[],tras:[]};
-let FILTERED={ventas:[],compras:[],mv:[],inv:[],rent:[],tras:[]};
+let FILTERED={ventas:[],ventasExcl:[],compras:[],mv:[],inv:[],rent:[],tras:[]};
+
+/* ── MERCANCÍA VENDIDA CALCULADA (Rocoto no tiene hoja "MERCANCIA VENDIDA") ──
+   - Inventario/MV: solo Centro de Costos "Bar" y "Cocina".
+   - Compras: se excluye solo CC "Otros"/"Otro" (agrupar por Bar/Cocina ya lo logra).
+   - Ventas Excluidas: solo CC "Otros"/"Otro" (se maneja aparte en applyFilter).
+   - Inventario heredado: Inv. Final de un mes = Inv. Inicial del mes siguiente,
+     por sede y CC, en orden cronológico real. */
+const MESES_ORDEN_MV=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+function computeMV(){
+  const ccs=["Bar","Cocina"];
+  const invBC=RAW.inv.filter(r=>r.cc==="Bar"||r.cc==="Cocina");
+
+  const invFinMap={};
+  invBC.forEach(r=>{
+    const k=r.sede+"|"+r.cc+"|"+r.mes;
+    invFinMap[k]=(invFinMap[k]||0)+(r.costo_ajuste||0);
+  });
+
+  const comprasMap={};
+  RAW.compras.forEach(r=>{
+    if(r.cc!=="Bar"&&r.cc!=="Cocina") return; // excluye "Otros" y cualquier otro CC
+    const k=r.sede+"|"+r.cc+"|"+r.mes;
+    comprasMap[k]=(comprasMap[k]||0)+(r.total||0);
+  });
+
+  const ventasMap={};
+  RAW.ventas.forEach(r=>{
+    if(r.cc!=="Bar"&&r.cc!=="Cocina") return;
+    const k=r.sede+"|"+r.cc+"|"+r.mes;
+    ventasMap[k]=(ventasMap[k]||0)+(r.base||0);
+  });
+
+  const sedes=[...new Set(invBC.map(r=>r.sede))];
+  const rows=[];
+  sedes.forEach(sede=>{
+    ccs.forEach(cc=>{
+      let prevFin=0, first=true;
+      MESES_ORDEN_MV.forEach(mes=>{
+        const k=sede+"|"+cc+"|"+mes;
+        if(!(k in invFinMap)) return;
+        const finVal=invFinMap[k];
+        const iniVal=first?0:prevFin;
+        const compras=comprasMap[k]||0;
+        const mv=iniVal+compras-finVal;
+        const ventas=ventasMap[k]||0;
+        const prom=ventas>0?mv/ventas:0;
+        rows.push({sede,cc,mes,inv_ini:iniVal,compras,traslados:0,inv_fin:finVal,mv,ventas,prom});
+        prevFin=finVal; first=false;
+      });
+    });
+  });
+  RAW.mv=rows;
+}
 
 /* ── EXCEL PARSER ───────────────────────────────────────── */
 function parseExcel(wb){
@@ -448,7 +501,7 @@ function parseExcel(wb){
     base:colN(r,["Base"]),
     neto:colN(r,["Neto"]),
     cc:col(r,["Centro"]),
-  })).filter(r=>r.neto>0&&r.base>0);
+  })).filter(r=>r.base!==0);
 
   RAW.compras=toRows("COMPRAS").map(r=>({
     sede:col(r,["Almac","Alm"]).replace("ROCOTO ","").toUpperCase().trim(),
@@ -459,19 +512,10 @@ function parseExcel(wb){
     total:colN(r,["Total Neto","Total"]),
     cc:col(r,["CC"]),
     esPlanta:col(r,["Almac","Alm"]).toUpperCase().includes("PLANTA"),
-  })).filter(r=>r.total>0);
+  })).filter(r=>r.total!==0);
 
-  RAW.mv=toRows("MERCANCIA VENDIDA").map(r=>({
-    sede:col(r,["Sede"]).toUpperCase().trim(),cc:col(r,["Centro"]),
-    mes:col(r,["Mes"]).substring(0,3).toLowerCase(),
-    inv_ini:colN(r,["Inv Inicial","Inv_Inicial"]),
-    compras:colN(r,["Compras"]),
-    traslados:colN(r,["Traslados"]),
-    inv_fin:colN(r,["Inv Final","Inv_Final"]),
-    mv:colN(r,["Mercancia","Mercancía"]),
-    ventas:colN(r,["Ventas"]),
-    prom:colN(r,["Promedio"]),
-  })).filter(r=>r.sede&&r.sede!=="Total"&&r.ventas>0);
+  /* Rocoto no tiene hoja "MERCANCIA VENDIDA": se calcula con computeMV()
+     más abajo, una vez que RAW.ventas, RAW.compras y RAW.inv estén listos. */
 
   RAW.inv=toRows("FORMATO INVENTARIOS").map(r=>({
     sede:col(r,["Almacen"]).replace("ROCOTO ","").toUpperCase().trim(),
@@ -486,7 +530,7 @@ function parseExcel(wb){
     costo_ajuste:colN(r,["Costo Ajuste"]),
     ajuste:colN(r,["Ajuste"]),
     estado:col(r,["Estado"]),
-  })).filter(r=>r.sede&&r.estado);
+  })).filter(r=>r.sede);
   RAW.rent=toRows("RENTABILIDAD",{range:1}).map(r=>({
     fam:col(r,["Familia"]),art:col(r,["Art"]),
     tarifa:col(r,["Tarifa"]),
@@ -512,6 +556,8 @@ function parseExcel(wb){
     valor:trasNum(col(r,["Coste Variaci"]))
   })).filter(r=>r.sede&&r.art&&r.cant>0&&r.valor>0);
 
+  computeMV();
+
   // Populate filters
   const meses=[...new Set(RAW.ventas.map(r=>r.mes))].filter(Boolean);
   const sedes=[...new Set(RAW.ventas.map(r=>r.sede))].filter(Boolean);
@@ -526,8 +572,10 @@ function parseExcel(wb){
 function applyFilter(){
   const mes=document.getElementById("filter-mes").value;
   const sede=document.getElementById("filter-sede").value;
-  FILTERED.ventas=RAW.ventas.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede));
-  FILTERED.compras=RAW.compras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede||r.esPlanta));
+  const esOtros=cc=>{const c=(cc||"").trim().toLowerCase(); return c==="otros"||c==="otro";};
+  FILTERED.ventas=RAW.ventas.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)&&!esOtros(r.cc));
+  FILTERED.ventasExcl=RAW.ventas.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)&&esOtros(r.cc));
+  FILTERED.compras=RAW.compras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede||r.esPlanta)&&!esOtros(r.cc));
   FILTERED.mv=RAW.mv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede));
   FILTERED.inv=(RAW.inv&&RAW.inv.length)?RAW.inv.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)):[];
   FILTERED.tras=(RAW.tras&&RAW.tras.length)?RAW.tras.filter(r=>(mes==="ALL"||r.mes===mes)&&(sede==="ALL"||r.sede===sede)):[];
@@ -553,21 +601,22 @@ function resetFilter(){
 
 /* ── RENDER ALL ─────────────────────────────────────────── */
 function renderAll(){
-  const V=FILTERED.ventas, C=FILTERED.compras, MV=FILTERED.mv, R=FILTERED.rent&&FILTERED.rent.length?FILTERED.rent:RAW.rent.filter(r=>!r.tarifa.toLowerCase().includes("rappi")&&!r.tarifa.toLowerCase().includes("personal"));
+  const V=FILTERED.ventas, VE=FILTERED.ventasExcl||[], C=FILTERED.compras, MV=FILTERED.mv, R=FILTERED.rent&&FILTERED.rent.length?FILTERED.rent:RAW.rent.filter(r=>!r.tarifa.toLowerCase().includes("rappi")&&!r.tarifa.toLowerCase().includes("personal"));
   const tv=V.reduce((a,b)=>a+b.base,0);
+  const tvExcl=VE.reduce((a,b)=>a+b.base,0);
   const tc=C.reduce((a,b)=>a+b.total,0);
   const tmv=MV.reduce((a,b)=>a+b.mv,0);
-  const tven=MV.reduce((a,b)=>a+b.ventas,0);
-  const fcGlobal=tven>0?+(tmv/tven*100).toFixed(2):0;
+  const tvenBC=MV.reduce((a,b)=>a+b.ventas,0); // ventas Bar+Cocina, solo para % de costo
+  const fcGlobal=tvenBC>0?+(tmv/tvenBC*100).toFixed(2):0;
 
   /* ── RESUMEN ── */
   kpiGrid("kpi-resumen",[
-    {icon:"💵",label:"Ventas Totales",value:fmt(tven),sub:"Hoja Mercancía Vendida",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
-    {icon:"📂",label:"Inventario Inicial",value:fmt(MV.reduce((a,b)=>a+b.inv_ini,0)),sub:"Valor stock inicio período",bar:"linear-gradient(90deg,#0096c7,#0077b6)"},
-    {icon:"🛒",label:"Compras Totales",value:fmt(tc),sub:"Insumos y materias primas",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
-    {icon:"🔄",label:"Traslados",value:fmt(MV.reduce((a,b)=>a+b.traslados,0)),sub:"Envíos desde planta",bar:"linear-gradient(90deg,#7209b7,#3a86ff)"},
-    {icon:"📋",label:"Inventario Final",value:fmt(MV.reduce((a,b)=>a+b.inv_fin,0)),sub:"Valor stock al cierre",bar:"linear-gradient(90deg,#1b9aaa,#48cae4)"},
-    {icon:"📦",label:"Mercancía Vendida",value:fmt(tmv),sub:"Costo directo de ventas",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
+    {icon:"💵",label:"Ventas Totales",value:fmt(tv),sub:"Base neta (excluye CC 'Otros')",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"🚫",label:"Ventas Excluidas",value:fmt(tvExcl),sub:"Centro de Costos 'Otros'",bar:"linear-gradient(90deg,#ef476f,#f78c6b)"},
+    {icon:"📂",label:"Inventario Inicial",value:fmt(MV.reduce((a,b)=>a+b.inv_ini,0)),sub:"Heredado del cierre del mes anterior",bar:"linear-gradient(90deg,#0096c7,#0077b6)"},
+    {icon:"🛒",label:"Compras Totales",value:fmt(tc),sub:"Insumos y materias primas (excluye 'Otros')",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"📋",label:"Inventario Final",value:fmt(MV.reduce((a,b)=>a+b.inv_fin,0)),sub:"Solo Bar y Cocina",bar:"linear-gradient(90deg,#1b9aaa,#48cae4)"},
+    {icon:"📦",label:"Mercancía Vendida",value:fmt(tmv),sub:"Ini. heredado + Compras − Final",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
     {icon:"📊",label:"Costo Global",value:`${fcGlobal}%`,sub:fcGlobal<36?"✓ En rango":"⚠ Revisar",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
   ]);
   const bySede=groupBy(MV,"sede","ventas",10);
@@ -576,7 +625,7 @@ function renderAll(){
   barV("ch-ventas-mes",byMes.map(r=>r.n),byMes.map(r=>r.v),P);
   /* Validacion automatica de consistencia KPI vs grafico de ventas (fuente unica: MERCANCIA VENDIDA) */
   const ventasGrafico=byMes.reduce((a,b)=>a+b.v,0);
-  if(Math.abs(tven-ventasGrafico)>1){console.warn("Inconsistencia detectada entre KPI y grafico de ventas",{kpi:tven,grafico:ventasGrafico,diff:tven-ventasGrafico});}
+  if(Math.abs(tvenBC-ventasGrafico)>1){console.warn("Inconsistencia detectada entre KPI y grafico de ventas",{kpi:tvenBC,grafico:ventasGrafico,diff:tvenBC-ventasGrafico});}
   hbar("ch-fam-v-res",groupBy(V,"fam","base",5),P,230);
   hbar("ch-fam-c-res",groupBy(C,"fam","total",5),G,230);
 
@@ -586,7 +635,7 @@ function renderAll(){
   const bot15v=groupBy(V,"art","base",15,true);
   const bot15u=groupBy(V,"art","uds",15,true).filter(r=>r.v>0);
   kpiGrid("kpi-ventas",[
-    {icon:"💵",label:"Ventas Totales (MV)",value:fmt(tven),sub:"Hoja Mercancía Vendida",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"💵",label:"Ventas Totales",value:fmt(tv),sub:"Base neta (excluye CC 'Otros')",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
     {icon:"📦",label:"Total Unidades",value:new Intl.NumberFormat("es-CO").format(V.reduce((a,b)=>a+b.uds,0)),sub:"Productos despachados",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
     {icon:"🏪",label:"Sedes",value:[...new Set(V.map(r=>r.sede))].length,sub:"Activas en el período",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
     {icon:"🍽️",label:"Categorías",value:[...new Set(V.map(r=>r.fam))].filter(Boolean).length,sub:"Familias de producto",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
@@ -608,8 +657,8 @@ function renderAll(){
   // Top 10 Cocina/Bar por valor
   const topCocinaV=groupBy(vCocina,"art","base",15);
   const topBarV=groupBy(vBar,"art","base",15);
-  rentTable2("tbl-top-cocina-v",topCocinaV,groupBy(vCocina,"art","uds",15),tven);
-  rentTable2("tbl-top-bar-v",topBarV,groupBy(vBar,"art","uds",15),tven);
+  rentTable2("tbl-top-cocina-v",topCocinaV,groupBy(vCocina,"art","uds",15),tv);
+  rentTable2("tbl-top-bar-v",topBarV,groupBy(vBar,"art","uds",15),tv);
 
   /* ── COMPRAS ── */
   const topProv=groupBy(C,"prov","total",10);
