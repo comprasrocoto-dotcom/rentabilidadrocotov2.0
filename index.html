@@ -378,6 +378,29 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div class="card-sub">Por valor trasladado · orden descendente</div>
         <div style="height:520px"><canvas id="ch-tras-top"></canvas></div>
       </div>
+      <!-- ROW 3.5: Resumen por Producto y por Sede (mes completo, no por fecha) -->
+      <div class="g2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-title">📦 Resumen por Producto</div>
+          <div class="card-sub">Cantidad y valor total trasladado en el período (todas las fechas sumadas)</div>
+          <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+            <table id="tbl-tras-prod">
+              <thead><tr><th>Producto</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Valor Total</th></tr></thead>
+              <tbody id="tbl-tras-prod-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🏪 Resumen por Punto de Venta</div>
+          <div class="card-sub">Total trasladado desde Planta a cada sede en el período (pesos colombianos)</div>
+          <div style="overflow-x:auto">
+            <table id="tbl-tras-sede">
+              <thead><tr><th>Punto de Venta</th><th style="text-align:right">Movimientos</th><th style="text-align:right">Valor Total (COP)</th></tr></thead>
+              <tbody id="tbl-tras-sede-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
       <!-- ROW 4: Detalle tabla -->
       <div class="g1 card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -886,6 +909,32 @@ function renderTraslados(){
   const mm={}; T.forEach(r=>{const m=(r.mes||"").toLowerCase();if(m)mm[m]=(mm[m]||0)+(r.valor||0);});
   const meses=ORDEN.filter(m=>mm[m]!==undefined);
   mkChart("ch-tras-mes",{type:"line",data:{labels:meses.map(m=>m.toUpperCase()),datasets:[{label:"Valor Trasladado",data:meses.map(m=>mm[m]),borderColor:"#00b4d8",backgroundColor:"rgba(0,180,216,.15)",fill:true,tension:.3,pointBackgroundColor:"#48cae4",pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:false},tooltip:{...TIP,callbacks:{label:c=>" "+fmt(c.raw)}}},scales:{x:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf"}},y:{grid:{color:"rgba(0,180,216,.06)"},ticks:{color:"#6c8ebf",callback:v=>fmt(v)}}}}});
+  // Tabla resumen por Producto (todo el mes, sin desglose por fecha)
+  const prodMap={};
+  T.forEach(r=>{
+    const k=r.art||"(sin nombre)";
+    if(!prodMap[k]) prodMap[k]={art:k,cant:0,valor:0};
+    prodMap[k].cant+=(r.cant||0);
+    prodMap[k].valor+=(r.valor||0);
+  });
+  const prodRows=Object.values(prodMap).sort((a,b)=>b.valor-a.valor);
+  document.getElementById("tbl-tras-prod-body").innerHTML=prodRows.map(r=>
+    `<tr><td>${r.art}</td><td style="text-align:right">${new Intl.NumberFormat("es-CO").format(r.cant)}</td><td style="text-align:right">${fmtCOP(r.valor)}</td></tr>`
+  ).join("")||`<tr><td colspan="3" style="text-align:center;color:#6c8ebf;padding:20px">Sin registros</td></tr>`;
+
+  // Tabla resumen por Punto de Venta (todo el mes, en pesos colombianos)
+  const sedeMap={};
+  T.forEach(r=>{
+    const k=r.sede||"(sin sede)";
+    if(!sedeMap[k]) sedeMap[k]={sede:k,mov:0,valor:0};
+    sedeMap[k].mov+=1;
+    sedeMap[k].valor+=(r.valor||0);
+  });
+  const sedeRows=Object.values(sedeMap).sort((a,b)=>b.valor-a.valor);
+  document.getElementById("tbl-tras-sede-body").innerHTML=sedeRows.map(r=>
+    `<tr><td>${r.sede}</td><td style="text-align:right">${new Intl.NumberFormat("es-CO").format(r.mov)}</td><td style="text-align:right;font-weight:700">${fmtCOP(r.valor)}</td></tr>`
+  ).join("")||`<tr><td colspan="3" style="text-align:center;color:#6c8ebf;padding:20px">Sin registros</td></tr>`;
+
   // Tabla detalle
   const rows=[...T].sort((a,b)=>(b.valor||0)-(a.valor||0));
   window.__TRAS_ROWS=rows;
