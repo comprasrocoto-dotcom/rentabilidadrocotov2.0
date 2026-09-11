@@ -627,6 +627,7 @@ function renderAll(){
     {icon:"🚫",label:"Ventas Excluidas",value:fmt(tvExcl),exact:fmtCOP(tvExcl),sub:"Centro de Costos 'Otros'",bar:"linear-gradient(90deg,#ef476f,#f78c6b)"},
     {icon:"📂",label:"Inventario Inicial",value:fmt(MV.reduce((a,b)=>a+b.inv_ini,0)),exact:fmtCOP(MV.reduce((a,b)=>a+b.inv_ini,0)),sub:"Heredado del cierre del mes anterior",bar:"linear-gradient(90deg,#0096c7,#0077b6)"},
     {icon:"🛒",label:"Compras Totales",value:fmt(tc),exact:fmtCOP(tc),sub:"Insumos, materias primas y traslados (excluye 'Otros')",bar:"linear-gradient(90deg,#00b4d8,#48cae4)"},
+    {icon:"🚚",label:"Traslados",value:fmt(MV.reduce((a,b)=>a+b.traslados,0)),exact:fmtCOP(MV.reduce((a,b)=>a+b.traslados,0)),sub:"Desde Planta (incluido en Compras Totales)",bar:"linear-gradient(90deg,#7209b7,#3a86ff)"},
     {icon:"📋",label:"Inventario Final",value:fmt(MV.reduce((a,b)=>a+b.inv_fin,0)),exact:fmtCOP(MV.reduce((a,b)=>a+b.inv_fin,0)),sub:"Solo Bar y Cocina",bar:"linear-gradient(90deg,#1b9aaa,#48cae4)"},
     {icon:"📦",label:"Mercancía Vendida",value:fmt(tmv),exact:fmtCOP(tmv),sub:"Ini. heredado + Compras + Traslados − Final",bar:"linear-gradient(90deg,#3a86ff,#7209b7)"},
     {icon:"📊",label:"Costo Global",value:`${fcGlobal}%`,sub:fcGlobal<36?"✓ En rango":"⚠ Revisar",bar:"linear-gradient(90deg,#06d6a0,#90e0ef)"},
